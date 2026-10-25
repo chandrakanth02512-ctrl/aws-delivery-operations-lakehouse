@@ -1,0 +1,50 @@
+$ .venv/bin/python --version
+Python 3.13.5
+exit_code=0
+
+$ java -version
+openjdk version "21.0.12.1" 2026-08-18
+OpenJDK Runtime Environment (build 21.0.12.1+1-1-deb13u1-Debian)
+OpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-deb13u1-Debian, mixed mode, sharing)
+exit_code=0
+
+$ .venv/bin/python -c import pyspark; print("PySpark", pyspark.__version__)
+PySpark 4.1.1
+exit_code=0
+
+$ .venv/bin/ruff --version
+ruff 0.17.2
+exit_code=0
+
+$ .venv/bin/cfn-lint --version
+cfn-lint 1.58.0
+exit_code=0
+
+$ .venv/bin/ruff check .
+All checks passed!
+exit_code=0
+
+$ .venv/bin/ruff format --check .
+46 files already formatted
+exit_code=0
+
+$ .venv/bin/cfn-lint infrastructure/bootstrap.yaml infrastructure/lakehouse.yaml
+
+exit_code=0
+
+$ .venv/bin/python scripts/data_dictionary.py --check
+
+exit_code=0
+
+$ uv pip check
+Checked 29 packages in 0.55ms
+All installed packages are compatible
+exit_code=0
+
+$ uv lock --check
+Resolved 30 packages in 0.97ms
+exit_code=0
+
+$ git diff --check
+
+exit_code=0

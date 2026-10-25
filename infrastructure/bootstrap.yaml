@@ -1,0 +1,201 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  OWNER-REVIEWED ONE-TIME BOOTSTRAP. GitHub main-branch OIDC trust and bounded deployment/runtime roles.
+  Does not create a bucket, run jobs, grant permanent keys, or upgrade the account.
+Parameters:
+  ExistingBucket:
+    Type: String
+    Default: ck-delivery-ops-lakehouse-2026-1025
+    AllowedValues: [ck-delivery-ops-lakehouse-2026-1025]
+  ExistingOidcProviderArn:
+    Type: String
+    Default: ''
+    Description: Reuse the account GitHub OIDC provider ARN if it already exists; otherwise leave empty.
+    AllowedPattern: '^$|^arn:aws:iam::[0-9]{12}:oidc-provider/token.actions.githubusercontent.com$'
+Rules:
+  SydneyOnly:
+    Assertions:
+      - Assert: !Equals [!Ref 'AWS::Region', ap-southeast-2]
+        AssertDescription: Deploy only in Sydney.
+Conditions:
+  CreateOidcProvider: !Equals [!Ref ExistingOidcProviderArn, '']
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateOidcProvider
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+  GlueRuntimeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: delivery-ops-dev-glue-runtime
+      Description: Runtime role; changed only through owner-reviewed bootstrap updates.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: glue.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: delivery-lakehouse-runtime
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: BucketLocation
+                Effect: Allow
+                Action: s3:GetBucketLocation
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ExistingBucket}'
+              - Sid: ListProjectPrefixes
+                Effect: Allow
+                Action: [s3:ListBucket, s3:ListBucketMultipartUploads]
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ExistingBucket}'
+                Condition:
+                  StringLike:
+                    s3:prefix: ['landing/*', 'bronze/*', 'silver/*', 'gold/*', 'quarantine/*']
+              - Sid: ReadProjectData
+                Effect: Allow
+                Action: [s3:GetObject, s3:GetObjectVersion]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ExistingBucket}/landing/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ExistingBucket}/bronze/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ExistingBucket}/silver/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ExistingBucket}/gold/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ExistingBucket}/quarantine/*'
+              - Sid: WritePipelineOutputs
+                Effect: Allow
+                Action: [s3:PutObject, s3:AbortMultipartUpload, s3:ListMultipartUploadParts]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ExistingBucket}/bronze/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ExistingBucket}/silver/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ExistingBucket}/gold/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ExistingBucket}/quarantine/*'
+              - Sid: ReplaceCuratedOutputs
+                Effect: Allow
+                Action: s3:DeleteObject
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ExistingBucket}/silver/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ExistingBucket}/gold/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ExistingBucket}/quarantine/*'
+              - Sid: CuratedCatalogOnly
+                Effect: Allow
+                Action: [glue:GetDatabase, glue:GetTable, glue:GetTables, glue:CreateTable, glue:UpdateTable]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog'
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/delivery_ops_dev_silver'
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/delivery_ops_dev_gold'
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/delivery_ops_dev_silver/*'
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/delivery_ops_dev_gold/*'
+              - Sid: JobLogsOnly
+                Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws-glue/jobs/delivery-ops-dev/error:log-stream:*'
+                  - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws-glue/jobs/delivery-ops-dev/output:log-stream:*'
+  CloudFormationExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: delivery-ops-dev-cfn-execution
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: cloudformation.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: bounded-infrastructure
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: SingleJobDefinition
+                Effect: Allow
+                Action: [glue:CreateJob, glue:UpdateJob, glue:GetJob, glue:DeleteJob, glue:TagResource, glue:UntagResource, glue:GetTags]
+                Resource: !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:job/delivery-ops-dev-phase1'
+              - Sid: TwoDatabases
+                Effect: Allow
+                Action: [glue:CreateDatabase, glue:UpdateDatabase, glue:GetDatabase, glue:DeleteDatabase]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog'
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/delivery_ops_dev_silver'
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/delivery_ops_dev_gold'
+              - Sid: PassRuntimeToGlueOnly
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt GlueRuntimeRole.Arn
+                Condition:
+                  StringEquals: {iam:PassedToService: glue.amazonaws.com}
+              - Sid: OneWorkgroup
+                Effect: Allow
+                Action: [athena:CreateWorkGroup, athena:UpdateWorkGroup, athena:GetWorkGroup, athena:DeleteWorkGroup, athena:TagResource, athena:UntagResource, athena:ListTagsForResource]
+                Resource: !Sub 'arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/delivery-ops-dev'
+              - Sid: BoundedLogGroups
+                Effect: Allow
+                Action: [logs:CreateLogGroup, logs:DeleteLogGroup, logs:PutRetentionPolicy, logs:DeleteRetentionPolicy, logs:TagResource, logs:UntagResource, logs:ListTagsForResource]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws-glue/jobs/delivery-ops-dev/error*'
+                  - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws-glue/jobs/delivery-ops-dev/output*'
+              - Sid: LogGroupDiscovery
+                Effect: Allow
+                Action: logs:DescribeLogGroups
+                Resource: '*'
+              - Sid: NeverRunCompute
+                Effect: Deny
+                Action: [glue:StartJobRun, glue:StartTrigger, glue:StartCrawler, athena:StartQueryExecution]
+                Resource: '*'
+  GitHubDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: delivery-ops-dev-github-deploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If [CreateOidcProvider, !Ref GitHubOidcProvider, !Ref ExistingOidcProviderArn]
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: repo:chandrakanth02512-ctrl/aws-delivery-operations-lakehouse:ref:refs/heads/main
+      Policies:
+        - PolicyName: main-branch-deployment
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReleaseArtifactsOnly
+                Effect: Allow
+                Action: [s3:GetObject, s3:PutObject]
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ExistingBucket}/landing/_artifacts/*'
+              - Sid: CreateReviewedChangeSets
+                Effect: Allow
+                Action: cloudformation:CreateChangeSet
+                Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/delivery-ops-dev/*'
+                Condition:
+                  StringEquals:
+                    cloudformation:RoleArn: !GetAtt CloudFormationExecutionRole.Arn
+              - Sid: ReviewAndExecuteProjectStack
+                Effect: Allow
+                Action: [cloudformation:DescribeStacks, cloudformation:DescribeStackEvents, cloudformation:GetTemplate, cloudformation:DescribeChangeSet, cloudformation:ExecuteChangeSet, cloudformation:DeleteChangeSet]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/delivery-ops-dev/*'
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:changeSet/delivery-ops-dev-*/*'
+              - Sid: PassBoundedServiceRoleOnly
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt CloudFormationExecutionRole.Arn
+                Condition:
+                  StringEquals: {iam:PassedToService: cloudformation.amazonaws.com}
+              - Sid: NeverRunComputeOrEditIAM
+                Effect: Deny
+                Action: [glue:StartJobRun, glue:StartTrigger, glue:StartCrawler, athena:StartQueryExecution, 'iam:Create*', 'iam:Update*', 'iam:Put*', 'iam:Attach*', 'iam:Delete*']
+                Resource: '*'
+Outputs:
+  GitHubRoleArn:
+    Value: !GetAtt GitHubDeployRole.Arn
+  CloudFormationRoleArn:
+    Value: !GetAtt CloudFormationExecutionRole.Arn
+  GlueRuntimeRoleArn:
+    Value: !GetAtt GlueRuntimeRole.Arn

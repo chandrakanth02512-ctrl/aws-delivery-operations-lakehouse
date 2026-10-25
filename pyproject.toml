@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "delivery-lakehouse"
+version = "0.1.0"
+description = "Synthetic last-mile delivery operations lakehouse on AWS"
+requires-python = ">=3.13,<3.14"
+dependencies = ["boto3==1.42.84"]
+
+[project.optional-dependencies]
+spark = ["pyspark==4.1.1"]
+
+[dependency-groups]
+dev = ["pytest>=8.3,<10", "pytest-cov>=6,<8", "ruff>=0.12,<1", "cfn-lint>=1.40,<2", "build>=1.2,<2"]
+
+[project.scripts]
+delivery-lakehouse = "delivery_lakehouse.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/delivery_lakehouse"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = ["spark: requires local Java and PySpark", "iceberg: requires local Iceberg runtime JAR", "aws: requires explicitly authorized live AWS access"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]

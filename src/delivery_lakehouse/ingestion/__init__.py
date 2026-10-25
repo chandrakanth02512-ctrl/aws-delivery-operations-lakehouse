@@ -1,0 +1,1 @@
+"""Immutable manifest-driven ingestion."""

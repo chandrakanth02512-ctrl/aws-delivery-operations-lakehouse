@@ -218,3 +218,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Generated lakehouse data and local Spark runtime
+/data/
+/artifacts/
+/spark-warehouse/
+metastore_db/
+derby.log
+*.parquet
+*.jar
