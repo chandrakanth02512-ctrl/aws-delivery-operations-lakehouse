@@ -4,6 +4,11 @@
 GitHub repository access does not grant AWS access. Nothing in CI deploys or starts jobs. The steps
 below are for the owner after IAM review and explicit approval, not commands already executed.
 
+**Phase 2 update:** no IAM or CloudFormation changes are required. The same release package/job now
+supports `--pipeline_mode cdc`; see [CDC operations](cdc-operations.md). The Phase 2 PR is stacked on
+`feat/phase-1-lakehouse` while PR #1 remains unmerged. Review/merge in dependency order, then prepare
+the release from the final reviewed main commit. Never dispatch deployment from a feature branch.
+
 ## IAM review
 
 Read [bootstrap.yaml](../infrastructure/bootstrap.yaml) in full before creating a change set.

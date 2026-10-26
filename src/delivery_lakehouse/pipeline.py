@@ -17,6 +17,10 @@ LOGGER = logging.getLogger(__name__)
 
 
 def run_pipeline(spark, store, settings, batch_id, *, catalog=None):
+    if store.exists("gold/_cdc/initialized.json"):
+        raise ValueError(
+            "CDC is initialized; snapshot replacement would invalidate source versions"
+        )
     bronze_manifest = ingest(store, batch_id)
     run_id = digest(
         canonical_json(

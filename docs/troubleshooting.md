@@ -1,5 +1,9 @@
 # Troubleshooting
 
+For CDC-specific errors, active-batch recovery, schema drift and snapshot adoption, use the
+[Phase 2 recovery runbook](cdc-operations.md#recovery-procedure). The snapshot repair guidance below
+must not be used to delete or bypass CDC state, tombstones or a pending publication plan.
+
 | Symptom | Diagnosis / action |
 |---|---|
 | Python worker version mismatch | Use `uv sync --extra spark` and `uv run`. Local session configuration pins workers to the driver's interpreter. Glue uses its managed interpreter. |

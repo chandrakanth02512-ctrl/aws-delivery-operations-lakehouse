@@ -34,7 +34,12 @@ def session(*, local=True, iceberg_jar=None, warehouse=None):
             .config(
                 "spark.sql.catalog.lakehouse.catalog-impl", "org.apache.iceberg.jdbc.JdbcCatalog"
             )
-            .config("spark.sql.catalog.lakehouse.uri", f"jdbc:h2:{warehouse}/catalog")
+            # Iceberg probes JDBC metadata with lowercase identifiers when reopening.
+            # H2's uppercase default makes an existing v1 schema look unmigrated.
+            .config(
+                "spark.sql.catalog.lakehouse.uri",
+                f"jdbc:h2:{warehouse}/catalog;DATABASE_TO_LOWER=TRUE",
+            )
             .config("spark.sql.catalog.lakehouse.warehouse", str(warehouse))
             .config("spark.sql.catalog.lakehouse.jdbc.schema-version", "V1")
         )

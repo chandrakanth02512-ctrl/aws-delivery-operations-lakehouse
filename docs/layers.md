@@ -1,5 +1,10 @@
 # Layer contracts and quality policy
 
+The snapshot rules below remain the Phase 1 contract. [Phase 2 CDC](cdc-architecture.md) adds full
+after-images, source-version ordering, immutable incremental Bronze, explicit dependent deletes and
+historical corrections. Both modes share these business schemas and Gold formulas. The CDC guide
+documents its narrower rule changes for historical driver assignments and failed attempts.
+
 ## Landing and Bronze
 
 Generate six UTF-8 JSONL files and a manifest under `landing/<batch-id>/`. A manifest contains contract
@@ -48,8 +53,8 @@ publication; failures leave reports available and set publication status FAILED.
 as structured JSON. No raw customer rows are emitted to logs (all customers are synthetic anyway).
 
 Quality checks do not claim exhaustive event-stream consistency: first-attempt evidence and
-successful delivery evidence are exposed in Gold; historical gaps and late/out-of-order event
-recovery belong to Phase 2. Source status remains the authority for shipment-level delivery outcomes.
+successful delivery evidence are exposed in Gold. Phase 2 handles late/out-of-order after-images;
+it does not infer missing evidence. Source status remains the shipment-level outcome authority.
 
 ## Gold table dictionary
 
@@ -80,7 +85,7 @@ this dimension; seven-row windows represent seven observed dates, which may not 
 | created_at, promised_at, delivered_at | timestamp; from Silver, delivered_at nullable |
 | status, service_level, weather, traffic | string; source contract enums |
 | weight_kg, distance_km | double; from Silver |
-| _batch_id | string; source snapshot identity |
+| _batch_id | string; source snapshot or last accepted shipment after-image batch identity |
 | delivered_count, on_time_count, failed_count | int; 0/1 indicator columns |
 | delivery_delay_minutes | numeric; positive delay clamped at zero, null for non-delivered |
 | attempt_count, failed_attempts | long; counts of accepted attempts |

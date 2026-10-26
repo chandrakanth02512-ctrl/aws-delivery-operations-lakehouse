@@ -49,6 +49,14 @@ def build_gold(spark, silver):
         "fact_shipments": fact,
         "fact_delivery_attempts": silver["delivery_attempts"].drop("_raw_json"),
     }
+    tables.update(build_kpis(spark, fact))
+    return tables
+
+
+def build_kpis(spark, fact):
+    """Shared formulas for complete snapshots and affected CDC reporting cohorts."""
+    fact.createOrReplaceTempView("fact_shipments")
+    tables = {}
     for name, dimensions in {
         "kpi_daily": ["promised_date"],
         "kpi_station_daily": ["promised_date", "station_id"],
