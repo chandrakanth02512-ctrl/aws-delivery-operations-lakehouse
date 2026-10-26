@@ -31,6 +31,7 @@ from delivery_lakehouse.cdc.state import (
 from delivery_lakehouse.config import batch_identifier
 from delivery_lakehouse.contracts import CONTRACTS
 from delivery_lakehouse.generator import canonical_json, digest
+from delivery_lakehouse.operations.events import emit
 from delivery_lakehouse.transforms.gold import build_gold
 
 LOGGER = logging.getLogger(__name__)
@@ -244,6 +245,14 @@ def stage_plan(
     gold = plan_gold(spark, silver_plan, before_silver, before_gold)
     for name, frame in gold.items():
         stage("gold", name, frame, GOLD_KEYS[name])
+    # A sparse incremental plan still creates the complete model on first initialization.
+    for name, keys in GOLD_KEYS.items():
+        if name not in gold and not spark.catalog.tableExists(
+            target_name(catalog, settings, "gold", name)
+        ):
+            stage(
+                "gold", name, before_gold[name].limit(0).withColumn("_delete", F.lit(False)), keys
+            )
     latest = silver_plan["state_delta"].agg(F.max("source_event_at")).first()[0]
     previous = checkpoint.get("source_event_watermark")
     watermark = max([event_time(previous)] if previous else [], default=None)
@@ -325,6 +334,8 @@ def run_cdc(
     catalog="glue_catalog",
     adopt_snapshot=False,
     failure_hook=None,
+    observer=None,
+    verify_publication=None,
 ):
     batch_identifier(batch_id)
     binding = load_json(store, INITIALIZED_KEY, {})
@@ -347,6 +358,7 @@ def run_cdc(
         ingest_changes(store, batch_id)
         finish_committed_batch(store, state, checkpoint)
         LOGGER.info("cdc_batch_replay_noop", extra={"batch_id": batch_id, "status": "SUCCEEDED"})
+        emit(observer, "REPLAY", "SUCCEEDED")
         return state
     if not state:
         state = transition(
@@ -384,8 +396,15 @@ def run_cdc(
     silver_plan = None
     publication_started = False
     try:
+        emit(observer, "BRONZE", "RUNNING")
         bronze = ingest_changes(store, batch_id)
         state["manifest_sha256"] = bronze["manifest_sha256"]
+        emit(
+            observer,
+            "BRONZE",
+            "SUCCEEDED",
+            source_rows=sum(entry["rows"] for entry in bronze["files"].values()),
+        )
         stage = "INITIALIZATION"
         if not state.get("plan_key"):
             before_silver, before_gold = read_current(spark, store, settings, catalog)
@@ -398,9 +417,12 @@ def run_cdc(
         publication_started = True
         stage = "VALIDATION"
         if not state.get("plan_key"):
+            emit(observer, "SILVER", "RUNNING")
             record_state = spark.table(target_name(catalog, settings, "silver", "cdc_record_state"))
             silver_plan = plan_silver(spark, store, bronze, before_silver, record_state)
             save_quality(spark, store, state, silver_plan, settings.max_reject_fraction)
+            emit(observer, "SILVER", "SUCCEEDED", counts=state["counts"])
+            emit(observer, "GOLD", "RUNNING")
             state["plan_key"] = stage_plan(
                 spark,
                 store,
@@ -413,6 +435,10 @@ def run_cdc(
                 checkpoint,
             )
             save_state(store, state)
+            emit(observer, "GOLD", "SUCCEEDED", plan_key=state["plan_key"])
+        else:
+            emit(observer, "SILVER", "SKIPPED", reason="RECOVER_FROZEN_PLAN")
+            emit(observer, "GOLD", "SKIPPED", reason="RECOVER_FROZEN_PLAN")
         plan = read_plan(store, state["plan_key"])
         state.update(
             counts=plan["counts"],
@@ -421,9 +447,18 @@ def run_cdc(
             publication_status="PUBLISHING",
         )
         stage = "PUBLICATION"
+        emit(observer, "PUBLISH", "RUNNING")
         if failure_hook:
             failure_hook("PLAN_COMMITTED")
         publish_plan(spark, store, settings, catalog, state, plan, failure_hook)
+        emit(observer, "PUBLISH", "SUCCEEDED", completed_steps=state["completed_steps"])
+        stage = "VERIFICATION"
+        emit(observer, "VERIFY", "RUNNING")
+        if verify_publication:
+            verify_publication({"mode": "cdc", "plan": plan})
+        emit(observer, "VERIFY", "SUCCEEDED", enabled=verify_publication is not None)
+        stage = "PUBLICATION"
+        emit(observer, "COMMIT", "RUNNING")
         save_json(
             store,
             PUBLICATION_KEY,
@@ -452,6 +487,7 @@ def run_cdc(
         )
         save_state(store, state)
         finish_committed_batch(store, state, checkpoint)
+        emit(observer, "COMMIT", "SUCCEEDED")
         metrics = {
             key: sum(counts[key] for counts in state["counts"].values())
             for key in (

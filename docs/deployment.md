@@ -9,6 +9,14 @@ supports `--pipeline_mode cdc`; see [CDC operations](cdc-operations.md). The Pha
 `feat/phase-1-lakehouse` while PR #1 remains unmerged. Review/merge in dependency order, then prepare
 the release from the final reviewed main commit. Never dispatch deployment from a feature branch.
 
+**Phase 3 update:** the release is now 0.3.0 and the existing Glue adapter uses execution control and
+stored-row verification in both modes. Review the PRs in [stack order](release-checklist.md) before
+preparing the final main release. `infrastructure/operations.yaml` is a separate owner-reviewed
+manual Step Functions/optional monitoring stack. The existing GitHub and CloudFormation deployment
+roles cannot create its new IAM role or state machine; this phase does not broaden those policies.
+Follow [operations setup](operations.md#prepared-cloud-request-and-later-deployment) only after
+separate authorization. Monitoring defaults off, alarm actions remain disabled and no schedule exists.
+
 ## IAM review
 
 Read [bootstrap.yaml](../infrastructure/bootstrap.yaml) in full before creating a change set.
@@ -61,7 +69,7 @@ parameters, so protect `main`, review workflow/script changes, and keep runtime 
    PRs and successful CI on `main`, including changes to `.github/workflows/` and `infrastructure/`.
    Do not attach a GitHub Environment to this job without revisiting OIDC trust: environments change
    the default subject from branch-based to environment-based. The supplied trust requires main.
-7. Review and merge the Phase 1 PR. In Actions → **Reviewed AWS infrastructure**, select **main**, set
+7. Review and merge the phase PRs in order. In Actions → **Reviewed AWS infrastructure**, select **main**, set
    `operation=plan`, and type `DEPLOY_REVIEWED_INFRASTRUCTURE`. This explicitly approved workflow
    uploads two immutable release objects and creates a CloudFormation change set; it does not execute
    it. Download `infrastructure-review-<run-id>` and review `change-set.json` and AWS Console changes.

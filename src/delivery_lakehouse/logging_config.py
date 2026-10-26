@@ -13,6 +13,10 @@ class JsonFormatter(logging.Formatter):
         }
         for key in (
             "batch_id",
+            "execution_id",
+            "attempt",
+            "started_at",
+            "completed_at",
             "dataset",
             "rows",
             "stage",
@@ -24,6 +28,12 @@ class JsonFormatter(logging.Formatter):
             "rows_rejected",
             "rows_ignored",
             "error_category",
+            "input_rows",
+            "output_rows",
+            "planned_output_rows",
+            "source_rows",
+            "accepted_changes",
+            "quality_reject_fraction",
         ):
             if hasattr(record, key):
                 payload[key] = getattr(record, key)

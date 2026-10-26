@@ -1,0 +1,224 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Prepared Phase 3 manual orchestration and optional monitoring; never deployed by CI.
+Parameters:
+  ExistingJobName:
+    Type: String
+    Default: delivery-ops-dev-phase1
+    AllowedValues: [delivery-ops-dev-phase1]
+  EnableMonitoring:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+    Description: Creates billable metric filters/alarms only after separate cost review; actions remain disabled.
+Rules:
+  SydneyOnly:
+    Assertions:
+      - Assert: !Equals [!Ref 'AWS::Region', ap-southeast-2]
+        AssertDescription: Deploy only in Sydney.
+Conditions:
+  MonitoringEnabled: !Equals [!Ref EnableMonitoring, 'true']
+Resources:
+  OrchestrationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: delivery-ops-dev-orchestration
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: states.amazonaws.com}
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: {aws:SourceAccount: !Ref AWS::AccountId}
+              ArnEquals:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:delivery-ops-dev'
+      Policies:
+        - PolicyName: RunOnlyReviewedDeliveryJob
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [glue:StartJobRun, glue:GetJobRun, glue:GetJobRuns, glue:BatchStopJobRun]
+                Resource: !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:job/${ExistingJobName}'
+  DeliveryStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: delivery-ops-dev
+      StateMachineType: STANDARD
+      RoleArn: !GetAtt OrchestrationRole.Arn
+      LoggingConfiguration: {Level: 'OFF', IncludeExecutionData: false}
+      TracingConfiguration: {Enabled: false}
+      Definition:
+        Comment: Manual execution of the existing job; the job verifies publication before success.
+        StartAt: RequiredFields
+        TimeoutSeconds: 1200
+        States:
+          RequiredFields:
+            Type: Choice
+            Choices:
+              - And:
+                  - {Variable: '$.batchId', IsPresent: true}
+                  - {Variable: '$.pipelineMode', IsPresent: true}
+                  - {Variable: '$.adoptPhase1Snapshot', IsPresent: true}
+                  - {Variable: '$.maxAttempts', IsPresent: true}
+                  - {Variable: '$.retryDelaySeconds', IsPresent: true}
+                Next: ValidateParameters
+            Default: InvalidRequest
+          ValidateParameters:
+            Type: Choice
+            Choices:
+              - And:
+                  - {Variable: '$.batchId', IsString: true}
+                  # JSONPath StringMatches supports '*' only, not regex/length validation.
+                  # The request builder and Glue adapter enforce the full SHA-256 contract.
+                  - Not: {Variable: '$.batchId', StringEquals: ''}
+                  - Or:
+                      - {Variable: '$.pipelineMode', StringEquals: cdc}
+                      - {Variable: '$.pipelineMode', StringEquals: snapshot}
+                  - Or:
+                      - {Variable: '$.adoptPhase1Snapshot', StringEquals: 'false'}
+                      - And:
+                          - {Variable: '$.pipelineMode', StringEquals: cdc}
+                          - {Variable: '$.adoptPhase1Snapshot', StringEquals: 'true'}
+                  - Or:
+                      - {Variable: '$.maxAttempts', NumericEquals: 1}
+                      - {Variable: '$.maxAttempts', NumericEquals: 2}
+                  - {Variable: '$.retryDelaySeconds', NumericGreaterThanEquals: 0}
+                  - {Variable: '$.retryDelaySeconds', NumericLessThanEquals: 30}
+                Next: RunDeliveryPipeline
+            Default: InvalidRequest
+          RunDeliveryPipeline:
+            Type: Task
+            Resource: !Sub 'arn:${AWS::Partition}:states:::glue:startJobRun.sync'
+            TimeoutSeconds: 960
+            Parameters:
+              JobName: !Ref ExistingJobName
+              Arguments:
+                '--batch_id.$': '$.batchId'
+                '--pipeline_mode.$': '$.pipelineMode'
+                '--adopt_phase1_snapshot.$': '$.adoptPhase1Snapshot'
+                '--execution_id.$': '$$.Execution.Name'
+                '--resume_execution': 'true'
+                '--max_attempts.$': "States.Format('{}', $.maxAttempts)"
+                '--retry_delay_seconds.$': "States.Format('{}', $.retryDelaySeconds)"
+            ResultPath: '$.glueRun'
+            Catch:
+              - ErrorEquals: [States.ALL]
+                ResultPath: '$.failure'
+                Next: ExecutionFailed
+            Next: PublicationSucceeded
+          PublicationSucceeded:
+            Type: Succeed
+          ExecutionFailed:
+            Type: Fail
+            ErrorPath: '$.failure.Error'
+            CausePath: '$.failure.Cause'
+          InvalidRequest:
+            Type: Fail
+            Error: InvalidExecutionRequest
+            Cause: Use the reviewed plan-aws command to prepare the required parameters.
+  FailedExecutionMetric:
+    Type: AWS::Logs::MetricFilter
+    Condition: MonitoringEnabled
+    Properties:
+      LogGroupName: /aws-glue/jobs/delivery-ops-dev/error
+      FilterPattern: '{ $.message = "pipeline_execution_completed" && $.status = "FAILED" }'
+      MetricTransformations:
+        - MetricNamespace: DeliveryOperations/Portfolio
+          MetricName: FailedExecutions
+          MetricValue: '1'
+          DefaultValue: 0
+          Unit: Count
+  RejectedRowsMetric:
+    Type: AWS::Logs::MetricFilter
+    Condition: MonitoringEnabled
+    Properties:
+      LogGroupName: /aws-glue/jobs/delivery-ops-dev/error
+      FilterPattern: '{ $.message = "pipeline_execution_completed" }'
+      MetricTransformations:
+        - MetricNamespace: DeliveryOperations/Portfolio
+          MetricName: RejectedRows
+          MetricValue: '$.rows_rejected'
+          Unit: Count
+  DurationMetric:
+    Type: AWS::Logs::MetricFilter
+    Condition: MonitoringEnabled
+    Properties:
+      LogGroupName: /aws-glue/jobs/delivery-ops-dev/error
+      FilterPattern: '{ $.message = "pipeline_execution_completed" }'
+      MetricTransformations:
+        - MetricNamespace: DeliveryOperations/Portfolio
+          MetricName: ExecutionDuration
+          MetricValue: '$.duration_seconds'
+          Unit: Seconds
+  FailedExecutionAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: MonitoringEnabled
+    Properties:
+      AlarmName: delivery-ops-dev-failed-executions
+      AlarmDescription: Failed pipeline execution; inspect its durable report before retrying.
+      ActionsEnabled: false
+      Namespace: DeliveryOperations/Portfolio
+      MetricName: FailedExecutions
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+  RejectedRowsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: MonitoringEnabled
+    Properties:
+      AlarmName: delivery-ops-dev-rejected-rows
+      AlarmDescription: Inspect quarantine; even quality-approved batches can contain rejects.
+      ActionsEnabled: false
+      Namespace: DeliveryOperations/Portfolio
+      MetricName: RejectedRows
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+  OrchestrationTimeoutAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: MonitoringEnabled
+    Properties:
+      AlarmName: delivery-ops-dev-orchestration-timeout
+      AlarmDescription: An execution may have left RUNNING state; use the recovery runbook.
+      ActionsEnabled: false
+      Namespace: AWS/States
+      MetricName: ExecutionsTimedOut
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !Ref DeliveryStateMachine
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+  OrchestrationFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: MonitoringEnabled
+    Properties:
+      AlarmName: delivery-ops-dev-orchestration-failure
+      AlarmDescription: Includes invalid requests and Glue startup failures before application logs exist.
+      ActionsEnabled: false
+      Namespace: AWS/States
+      MetricName: ExecutionsFailed
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !Ref DeliveryStateMachine
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+Outputs:
+  StateMachineArn:
+    Value: !Ref DeliveryStateMachine
+  OrchestrationRoleArn:
+    Value: !GetAtt OrchestrationRole.Arn

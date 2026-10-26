@@ -53,3 +53,24 @@ Each batch retains immutable source/Bronze, quarantine/ignored records, staged r
 reports and Iceberg snapshots. Their storage and request costs accumulate. No automatic expiration,
 snapshot cleanup, compaction or tombstone deletion is enabled. Retention and recovery requirements
 must be reviewed together before removing anything; indefinite tombstones currently protect replay.
+
+## Phase 3 orchestration and monitoring
+
+The operations template was not deployed. With monitoring off, a Standard Step Functions execution
+adds roughly five state transitions around the existing single Glue run. At a conservative planning
+rate of **$0.025 per 1,000 transitions**, ten runs add approximately **$0.00125** before applicable
+allowances. Confirm Sydney pricing and Free Plan availability before enabling the service. There is
+no polling Lambda, recurring schedule, extra per-layer Glue job or enabled tracing/log delivery.
+
+The optional monitoring switch creates three custom metrics and four standard alarms, with no metric
+dimensions per execution. At illustrative planning rates of **$0.30/custom metric-month** and
+**$0.10/alarm-month**, allow roughly **$1.30/month** additional ongoing monitoring charges, plus log
+ingestion. Exact regional pricing, metric activity and allowances may differ. Monitoring is **off** by
+default; `ActionsEnabled=false` prevents notifications, not metric/alarm charges if resources exist.
+No SNS topic/subscription is created. See [Step Functions pricing](https://aws.amazon.com/step-functions/pricing/)
+and [CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/) before separate cost approval.
+
+Post-write verification adds Spark reads/actions and execution-state writes. Its AWS duration and
+incremental cost are unmeasured. The event-only Gold-planning benchmark does not establish a reduction
+in the total AWS bill. Retrying inside a job adds work within its existing 15-minute limit; an explicit
+redrive starts another billable invocation. Neither limit is an account-wide cost cap.

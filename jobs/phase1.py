@@ -10,12 +10,21 @@ from pyspark.context import SparkContext
 from delivery_lakehouse.config import Settings, batch_identifier
 from delivery_lakehouse.ingestion.storage import S3Store
 from delivery_lakehouse.logging_config import configure_logging
-from delivery_lakehouse.pipeline import run_pipeline
+from delivery_lakehouse.operations.runner import run_execution
 
 
 def main():
     optional = [
-        name for name in ("pipeline_mode", "adopt_phase1_snapshot") if f"--{name}" in sys.argv
+        name
+        for name in (
+            "pipeline_mode",
+            "adopt_phase1_snapshot",
+            "execution_id",
+            "max_attempts",
+            "retry_delay_seconds",
+            "resume_execution",
+        )
+        if f"--{name}" in sys.argv
     ]
     args = getResolvedOptions(
         sys.argv,
@@ -35,6 +44,9 @@ def main():
     adoption = args.get("adopt_phase1_snapshot", "false")
     if adoption not in {"true", "false"}:
         raise ValueError("adopt_phase1_snapshot must be true or false")
+    resume = args.get("resume_execution", "false")
+    if resume not in {"true", "false"}:
+        raise ValueError("resume_execution must be true or false")
     batch_identifier(args["batch_id"])
     settings = Settings(
         bucket=args["bucket"],
@@ -50,19 +62,19 @@ def main():
     job = Job(glue)
     job.init(args["JOB_NAME"], args)
     store = S3Store(settings.bucket, settings.region)
-    if mode == "cdc":
-        from delivery_lakehouse.cdc.pipeline import run_cdc
-
-        run_cdc(
-            spark,
-            store,
-            settings,
-            args["batch_id"],
-            catalog="glue_catalog",
-            adopt_snapshot=adoption == "true",
-        )
-    else:
-        run_pipeline(spark, store, settings, args["batch_id"], catalog="glue_catalog")
+    run_execution(
+        spark,
+        store,
+        settings,
+        args["batch_id"],
+        mode=mode,
+        catalog="glue_catalog",
+        execution_id=args.get("execution_id"),
+        adopt_snapshot=adoption == "true",
+        max_attempts=int(args.get("max_attempts", "1")),
+        retry_delay_seconds=float(args.get("retry_delay_seconds", "1")),
+        resume=resume == "true",
+    )
     job.commit()
 
 

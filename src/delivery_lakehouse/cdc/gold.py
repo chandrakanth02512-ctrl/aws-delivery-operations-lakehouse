@@ -25,6 +25,12 @@ def changed_keys(plan, dataset):
 
 def plan_gold(spark, silver_plan, before_silver, before_gold):
     after = silver_plan["prospective"]
+    dimensions = plan_dimensions(silver_plan, before_gold)
+    if not any(
+        silver_plan["counts"][name]["accepted_changes"]
+        for name in ("shipments", "delivery_attempts")
+    ):
+        return dimensions
     changed_attempts = changed_keys(silver_plan, "delivery_attempts")
     affected_shipments = (
         changed_keys(silver_plan, "shipments")
@@ -64,17 +70,7 @@ def plan_gold(spark, silver_plan, before_silver, before_gold):
             before_gold["fact_shipments"].schema, new_facts, affected_shipments, ["shipment_id"]
         )
     }
-    dimension_sources = {
-        "dim_station": "delivery_stations",
-        "dim_driver": "drivers",
-        "dim_customer": "customers",
-        "fact_delivery_attempts": "delivery_attempts",
-    }
-    for table, dataset in dimension_sources.items():
-        keys = GOLD_KEYS[table]
-        affected = changed_keys(silver_plan, dataset)
-        rows = after[dataset].drop("_raw_json").join(affected, keys)
-        deltas[table] = delta_for_keys(before_gold[table].schema, rows, affected, keys)
+    deltas.update(dimensions)
     for table, rows in aggregates.items():
         keys = GOLD_KEYS[table]
         affected = before_facts.select(*keys).unionByName(new_facts.select(*keys)).distinct()
@@ -89,4 +85,21 @@ def plan_gold(spark, silver_plan, before_silver, before_gold):
         affected_dates.select(F.col("promised_date").alias("date_key")),
         ["date_key"],
     )
+    return deltas
+
+
+def plan_dimensions(silver_plan, before_gold):
+    deltas = {}
+    for table, dataset in {
+        "dim_station": "delivery_stations",
+        "dim_driver": "drivers",
+        "dim_customer": "customers",
+        "fact_delivery_attempts": "delivery_attempts",
+    }.items():
+        if not silver_plan["counts"][dataset]["accepted_changes"]:
+            continue
+        keys = GOLD_KEYS[table]
+        affected = changed_keys(silver_plan, dataset)
+        rows = silver_plan["prospective"][dataset].drop("_raw_json").join(affected, keys)
+        deltas[table] = delta_for_keys(before_gold[table].schema, rows, affected, keys)
     return deltas

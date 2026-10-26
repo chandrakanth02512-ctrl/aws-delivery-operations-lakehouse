@@ -1,0 +1,29 @@
+{
+  "date": "2026-10-26",
+  "scope": "all Phase 1, Phase 2 and Phase 3 local tests; no live AWS",
+  "base_commit": "f0e4467a3cee75e3cdc9a5044d5f2c7a330022e4",
+  "tests": 158,
+  "passed": 157,
+  "failed": 0,
+  "errors": 0,
+  "skipped": 1,
+  "pytest_reported_seconds": 957.76,
+  "coverage": {
+    "covered_lines": 1517,
+    "num_statements": 1652,
+    "percent_covered": 91.82808716707022,
+    "percent_covered_display": "92",
+    "missing_lines": 135,
+    "excluded_lines": 6,
+    "percent_statements_covered": 91.82808716707022,
+    "percent_statements_covered_display": "92"
+  },
+  "skip_reason": "Live AWS access not authorized/configured",
+  "runtime": {
+    "python": "3.13.5",
+    "spark": "4.1.1",
+    "iceberg": "1.11.0",
+    "h2": "2.4.240",
+    "java": "21.0.12.1"
+  }
+}

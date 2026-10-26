@@ -5,8 +5,8 @@ S3, AWS Glue 6.0, Apache Iceberg v2, Glue Data Catalog and Athena. It demonstrat
 behind trustworthy delivery metrics: reproducible inputs, auditable ingestion, explicit data quality,
 repeatable publication, tested business formulas and tightly scoped deployment automation.
 
-**Phases 1 and 2 are implemented and locally verified. AWS deployment and managed-service execution are
-pending owner review and approval.** No AWS credentials, permanent access keys or paid workloads
+**All three coding phases are implemented. AWS deployment and managed-service execution have not
+been verified and require owner review and approval.** No AWS credentials, permanent access keys or paid workloads
 were created. This repository contains no real Amazon/customer data and is not affiliated with Amazon.
 
 ## Business questions
@@ -20,10 +20,18 @@ were created. This repository contains no real Amazon/customer data and is not a
 [Sample Athena queries](sql/athena/) answer these questions. Metrics have explicit denominators,
 NULL behavior and boundary tests; failed attempts and failed shipments remain distinct.
 
+The engineering problem is that repeated attempts, late confirmations, duplicates and incomplete
+records can make operational reports disagree. This project preserves source evidence, validates
+relationships, publishes a consistent dimensional model and recalculates affected historical groups
+when new information arrives. Failed executions retain enough state to resume without double counting.
+
 ## Architecture
 
 ```mermaid
 flowchart LR
+    Operator[Manual reviewed request] --> Workflow[Step Functions Standard\nprepared; no schedule]
+    Workflow --> Job[Existing Glue 6.0 job\nordered execution + bounded recovery]
+    Job -. controls .-> Bronze
     Sources[Six synthetic sources] --> Landing[S3 Landing\nJSONL + manifest]
     Landing --> Bronze[Bronze\nraw values + lineage]
     Bronze --> Silver[Silver\nvalidation + deduplication]
@@ -32,10 +40,13 @@ flowchart LR
     Silver --> Catalog[Glue Catalog\nIceberg format v2]
     Gold --> Catalog
     Catalog --> Athena[Athena engine 3]
+    Gold --> Verify[Stored-row verification\nthen publication success]
+    Job --> Observe[JSON logs + execution reports\noptional CloudWatch definitions]
 ```
 
-One manually invoked Glue job supports snapshot and CDC modes. Local execution uses the same
-transformations. The tests run real Iceberg writes and MERGE operations with a local JDBC catalog;
+One Glue job supports snapshot and CDC modes through a shared execution runner. A prepared manual
+Step Functions workflow starts that existing job and waits for its result; local execution uses the same
+runner and transformations. The tests run real Iceberg writes and MERGE operations with a local JDBC catalog;
 they do not require an AWS account. The existing Sydney bucket and infrastructure are reused.
 
 **Engineering choices worth reviewing:**
@@ -49,9 +60,24 @@ they do not require an AWS account. The existing Sydney bucket and infrastructur
 - Snapshot replacement and incremental Iceberg MERGE, explicitly pinned to **format v2**.
 - CDC ordering, retained delete tombstones, schema drift diagnostics and late historical corrections.
 - Frozen publication plans, per-table recovery checkpoints and interrupted-commit failure tests.
+- Ordered execution stages, deterministic execution IDs, explicit resume and bounded transient retries.
+- Stored-row/schema verification before publication success, with execution reports and JSON diagnostics.
+- Optional CloudWatch metrics/alarms; monitoring and alarm actions remain disabled by default.
 - Documented cross-table publication limits; consumers must avoid reading during a batch.
 - CloudFormation, exact-repository/main-branch OIDC trust, role separation, manual plan/apply workflow.
 - Locked dependencies, SHA-pinned Actions, pinned JVM test artifacts, Pytest, Ruff and cfn-lint.
+
+## Data and quality
+
+Six seeded datasets model `delivery_stations`, `drivers`, `customers`, `shipments`,
+`delivery_attempts` and `delivery_events`. The [data dictionary](docs/data-dictionary.md) documents
+their keys, relationships, timestamps and business fields. Profiles include successful/late deliveries,
+failures, redelivery, cancellation and deliberate duplicate, missing, invalid-status and orphan records.
+
+Bronze preserves raw values with source/batch/ingestion lineage. Silver casts and validates types,
+required fields, domains, relationships and source ordering; rejected records retain reasons in
+quarantine. Gold organizes accepted data into four dimensions, two facts and three KPI aggregates. Per-dataset reconciliation and rejection thresholds gate publication.
+See [layer design](docs/layers.md) for the exact contracts and handling rules.
 
 ## Run locally
 
@@ -59,10 +85,11 @@ Use Python 3.13, Java 17+ and `uv`:
 
 ```bash
 uv sync --frozen --extra spark
-BATCH_ID=$(uv run delivery-lakehouse generate)
-uv run delivery-lakehouse run-local --batch-id "$BATCH_ID"
+uv run python scripts/fetch_iceberg.py
+BATCH_ID=$(uv run delivery-lakehouse generate --root data/operations)
+uv run delivery-lakehouse-ops run-local --mode snapshot --root data/operations --batch-id "$BATCH_ID"
 # Repeating the same command returns the completed publication without duplicate business rows.
-uv run delivery-lakehouse run-local --batch-id "$BATCH_ID"
+uv run delivery-lakehouse-ops run-local --mode snapshot --root data/operations --batch-id "$BATCH_ID"
 ```
 
 Or produce a compact, reproducible analytical summary:
@@ -75,8 +102,33 @@ Outputs are under `data/`; the summary is `artifacts/demo-summary.json`. No AWS 
 in local mode. The default small profile has **120 valid shipments**, plus deliberate duplicate and
 invalid rows. Medium has 10,000 valid shipments; large has 100,000. Use `generate --profile medium`
 only when you intentionally want more data. Settings are in [config/dev.json](config/dev.json).
+Execution JSON, Markdown reports and verification results are under `data/operations/gold/_operations/`.
+The original Phase 1/2 CLIs remain available; use a separate fresh root for each example.
+
+## Example analytical results
+
+The preserved [small synthetic snapshot evidence](docs/evidence/demo-summary.json), seed 42, contains
+745 raw rows across six sources: 735 accepted and 10 quarantined. It produces 120 valid shipments:
+
+| Measure | Local result | Meaning |
+|---|---:|---|
+| On-time delivery | 47.06% | 48 on-time / 102 delivered |
+| Average delay | 279.32 minutes | Late minutes, including zero for on-time deliveries |
+| First-attempt success | 77.78% | Successful first attempts / shipments with first-attempt evidence |
+| Terminal delivery failure | 5.56% | 6 failed / (102 delivered + 6 failed) |
+
+These are generated scenarios, not real operational findings or Amazon metrics. [Analytics guide](docs/analytics.md)
+maps all nine business questions to Athena SQL, explains cancellation separately from failure, and
+shows why rolling percentages must use additive counters. Queries are verified with local Spark;
+the Athena engine and its metadata-table syntax remain pending live acceptance.
 
 ## Verify
+
+**Final local regression: 157 passed, 1 intentionally skipped, zero failures in 957.76 seconds;
+92% package line coverage.** The skipped test requires live AWS authorization. The suite includes
+all Phase 1/2 tests, actual local Spark/Iceberg MERGE and recovery, Phase 3 execution control and SQL
+analytics. [GitHub Actions](https://github.com/chandrakanth02512-ctrl/aws-delivery-operations-lakehouse/actions/workflows/ci.yml)
+repeats these checks for pull requests and main; consult the check on the specific commit being reviewed.
 
 ```bash
 uv run python scripts/fetch_iceberg.py
@@ -87,11 +139,14 @@ uv run ruff format --check .
 uv run cfn-lint infrastructure/*.yaml
 uv run python scripts/data_dictionary.py --check
 uv pip check
+uv lock --check
+uv build
+uv run python scripts/package_glue.py
 ```
 
-The [Phase 2 verification report](docs/phase2-verification.md) records the combined regression results,
-runtime versions and what has **not** been tested. [Phase 1 evidence](docs/verification.md) is retained
-as a historical record. [Testing instructions](docs/testing.md)
+The [Phase 3 verification report](docs/phase3-verification.md) records the current combined regression
+results, coverage, CI and runtime limitations. [Phase 1](docs/verification.md) and
+[Phase 2](docs/phase2-verification.md) evidence remain historical records. [Testing instructions](docs/testing.md)
 distinguish local Spark/Iceberg tests, stubbed S3 tests and explicitly opted-in live AWS checks.
 
 ## CDC and late-arriving deliveries
@@ -116,6 +171,28 @@ See the [CDC architecture and example](docs/cdc-architecture.md) and
 [local operation, adoption and recovery guide](docs/cdc-operations.md). There is no automatic DDL,
 cross-table transaction, distributed writer lock or claim of large-volume performance certification.
 
+## Orchestration, monitoring and recovery
+
+The execution runner orders source validation, Bronze, Silver, Gold, publication, stored-row
+verification and final success. It records timestamps, durations, row counts, quality metrics and
+per-attempt failures. Completed execution IDs replay safely; failed/interrupted executions require
+explicit resume. Retries default to off, with at most one in-process retry when explicitly configured
+for recognized transient errors. Quality, schema and authorization failures do not automatically retry.
+
+CDC recovery retains Phase 2's frozen plans and per-table checkpoints. Post-write verification checks
+affected after-images and deleted keys before advancing success/checkpoints. **Iceberg commits are
+atomic per table, not across tables**; readers must avoid concurrent publication. Single-writer
+enforcement uses the shared local lock or the existing Glue job's concurrency-one limit.
+
+The prepared [operations stack](infrastructure/operations.yaml) adds a manual Standard state machine
+and optional monitoring. It is not deployed by CI, creates no schedule, defaults monitoring off and
+keeps all alarm actions disabled. [Operations](docs/operations.md) and [monitoring](docs/monitoring.md)
+describe execution identity, diagnostics, recovery and the later owner-reviewed setup.
+
+A focused local benchmark showed event-only Gold planning drop from **nine Spark jobs to zero**, with
+identical zero Gold output rows. This is a measured planning improvement, not an AWS or whole-pipeline
+speedup claim. See [method, timings and remaining scan limits](docs/performance.md).
+
 ## Repository map
 
 | Path | Responsibility |
@@ -127,7 +204,8 @@ cross-table transaction, distributed writer lock or claim of large-volume perfor
 | `src/delivery_lakehouse/quality/` | Reconciliation reports and quality gate |
 | `src/delivery_lakehouse/pipeline.py` | Snapshot publication and retry behavior |
 | `src/delivery_lakehouse/cdc/` | Change protocol, generation, immutable ingestion, incremental plans, MERGE and state |
-| `jobs/phase1.py` | Shared managed Glue entry point: snapshot default, optional CDC mode |
+| `src/delivery_lakehouse/operations/` | Execution control, retries, verification, metrics, reports and local/request CLI |
+| `jobs/phase1.py` | Shared managed Glue entry point through execution control: snapshot default, optional CDC |
 | `infrastructure/` | Owner-reviewed IAM bootstrap and repeatable resource definitions |
 | `.github/workflows/` | Local CI and explicitly gated OIDC deployment |
 | `tests/` | Unit, Spark, real local Iceberg and separate AWS tests |
@@ -147,6 +225,8 @@ Deployment workflows cannot start jobs or queries, and nothing is deployed autom
 Glue is pinned to **6.0, G.1X, two workers, 15-minute timeout, zero retries, concurrency one**.
 There are no recurring schedules or continuously running workloads. A conservative planning estimate
 is **$1–$4/month for ten small manual runs**, before credits; see [cost assumptions](docs/costs.md).
+Manual orchestration adds a small per-transition cost; optional custom metrics/alarms cost extra if
+enabled. The existing GitHub deployment role cannot create the separate operations IAM role/stack.
 The existing $10 budget alert is not a hard spending limit. Never upgrade the Free Plan automatically.
 
 ## Design and roadmap
@@ -155,13 +235,17 @@ The existing $10 budget alert is not a hard spending limit. Never upgrade the Fr
 [Layer design](docs/layers.md) · [KPI definitions](docs/kpis.md) ·
 [Troubleshooting](docs/troubleshooting.md) · [File inventory](docs/file-inventory.md)
 · [Phase 2 file inventory](docs/phase2-file-inventory.md)
+· [Phase 3 file inventory](docs/phase3-file-inventory.md) · [Private release checklist](docs/release-checklist.md)
 
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Sources, lakehouse layers, quality, analytics, local verification, IaC and secure deployment preparation | Implemented; AWS acceptance pending approval |
 | 2 | CDC, incremental MERGE, schema drift policy, late-arriving records, checkpoint/recovery | Implemented and locally verified; AWS acceptance pending |
-| 3 | Orchestration, monitoring, performance tuning, production deployment automation, reporting | Not implemented |
+| 3 | Execution control, recovery verification, prepared orchestration/monitoring, analytics, measured optimization and release workflow | Implemented; managed AWS acceptance pending |
 
 This is a production-style portfolio implementation with explicit operational limits. It is not yet
 a production-certified system: live IAM/Glue/Athena acceptance, multi-table reader coordination,
 retention operations and larger-volume performance measurements remain outstanding.
+
+Future work, not implemented: coordinated reader snapshots, reviewed retention/compaction,
+larger-volume load tests and a reporting dashboard. Live AWS acceptance is the next validation step.

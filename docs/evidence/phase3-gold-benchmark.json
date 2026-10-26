@@ -1,0 +1,55 @@
+{
+  "workload": "one new delivery event; 120 shipments; cached Gold; no affected facts",
+  "baseline_commit": "f0e4467a3cee75e3cdc9a5044d5f2c7a330022e4",
+  "candidate_source_sha256": "8973156441c5fc512fe9df813ac9251887122250983a63660ae136a213921a97",
+  "python": "3.13.5",
+  "spark": "4.1.1",
+  "java": "21.0.12.1",
+  "measurements": {
+    "phase2": [
+      {
+        "elapsed_ms": 5785.542,
+        "spark_jobs": 9,
+        "output_rows": 0,
+        "planned_tables": 9
+      },
+      {
+        "elapsed_ms": 5149.756,
+        "spark_jobs": 9,
+        "output_rows": 0,
+        "planned_tables": 9
+      },
+      {
+        "elapsed_ms": 3925.222,
+        "spark_jobs": 9,
+        "output_rows": 0,
+        "planned_tables": 9
+      }
+    ],
+    "phase3": [
+      {
+        "elapsed_ms": 0.02,
+        "spark_jobs": 0,
+        "output_rows": 0,
+        "planned_tables": 0
+      },
+      {
+        "elapsed_ms": 0.016,
+        "spark_jobs": 0,
+        "output_rows": 0,
+        "planned_tables": 0
+      },
+      {
+        "elapsed_ms": 0.012,
+        "spark_jobs": 0,
+        "output_rows": 0,
+        "planned_tables": 0
+      }
+    ]
+  },
+  "median_ms": {
+    "phase2": 5149.756,
+    "phase3": 0.016
+  },
+  "scope": "Gold planning and materializing deltas only; not full-pipeline or AWS throughput"
+}

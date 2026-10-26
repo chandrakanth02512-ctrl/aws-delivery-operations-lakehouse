@@ -8,6 +8,7 @@ from delivery_lakehouse import __version__
 from delivery_lakehouse.contracts import CONTRACTS
 from delivery_lakehouse.generator import canonical_json, digest
 from delivery_lakehouse.ingestion.bronze import ingest
+from delivery_lakehouse.operations.events import emit
 from delivery_lakehouse.quality.report import enforce
 from delivery_lakehouse.tables import write_iceberg
 from delivery_lakehouse.transforms.gold import build_gold
@@ -16,12 +17,21 @@ from delivery_lakehouse.transforms.silver import BRONZE_SCHEMA, transform
 LOGGER = logging.getLogger(__name__)
 
 
-def run_pipeline(spark, store, settings, batch_id, *, catalog=None):
+def run_pipeline(
+    spark, store, settings, batch_id, *, catalog=None, observer=None, verify_publication=None
+):
     if store.exists("gold/_cdc/initialized.json"):
         raise ValueError(
             "CDC is initialized; snapshot replacement would invalidate source versions"
         )
+    emit(observer, "BRONZE", "RUNNING")
     bronze_manifest = ingest(store, batch_id)
+    emit(
+        observer,
+        "BRONZE",
+        "SUCCEEDED",
+        source_rows=sum(entry["rows"] for entry in bronze_manifest["files"].values()),
+    )
     run_id = digest(
         canonical_json(
             {
@@ -40,6 +50,7 @@ def run_pipeline(spark, store, settings, batch_id, *, catalog=None):
         previous = json.loads(store.read(publication_key))
         if previous.get("run_id") == run_id and previous.get("status") == "SUCCEEDED":
             LOGGER.info("pipeline_replay_noop", extra={"batch_id": batch_id})
+            emit(observer, "REPLAY", "SUCCEEDED")
             return previous
     state = {
         "batch_id": batch_id,
@@ -51,6 +62,7 @@ def run_pipeline(spark, store, settings, batch_id, *, catalog=None):
     store.write(publication_key, canonical_json(state).encode())
     silver = None
     try:
+        emit(observer, "SILVER", "RUNNING")
         bronze = {
             name: spark.read.schema(BRONZE_SCHEMA).json(
                 store.uri(bronze_manifest["files"][name]["key"])
@@ -63,7 +75,11 @@ def run_pipeline(spark, store, settings, batch_id, *, catalog=None):
         quality = {"batch_id": batch_id, "run_id": run_id, "datasets": silver.reports}
         store.write(f"quarantine/{batch_id}/quality_report.json", canonical_json(quality).encode())
         enforce(silver.reports, settings.max_reject_fraction)
+        emit(observer, "SILVER", "SUCCEEDED", quality=quality)
+        emit(observer, "GOLD", "RUNNING")
         gold = build_gold(spark, silver.tables)
+        emit(observer, "GOLD", "SUCCEEDED")
+        emit(observer, "PUBLISH", "RUNNING")
         outputs = {}
         for layer, tables in (("silver", silver.tables), ("gold", gold)):
             database = f"{settings.database_prefix}_{layer}"
@@ -77,6 +93,20 @@ def run_pipeline(spark, store, settings, batch_id, *, catalog=None):
                     location = store.uri(f"{layer}/{batch_id}/{name}")
                     frame.write.mode("overwrite").parquet(location)
                     outputs[f"{layer}.{name}"] = location
+        emit(observer, "PUBLISH", "SUCCEEDED", tables=outputs)
+        emit(observer, "VERIFY", "RUNNING")
+        if verify_publication:
+            verify_publication(
+                {
+                    "mode": "snapshot",
+                    "tables": outputs,
+                    "catalog": catalog,
+                    "expected": {"silver": silver.tables, "gold": gold},
+                    "quality": quality,
+                }
+            )
+        emit(observer, "VERIFY", "SUCCEEDED", enabled=verify_publication is not None)
+        emit(observer, "COMMIT", "RUNNING")
         state.update(
             status="SUCCEEDED",
             completed_at=datetime.now(UTC).isoformat(),
@@ -85,6 +115,7 @@ def run_pipeline(spark, store, settings, batch_id, *, catalog=None):
         )
         store.write(f"gold/_commits/{run_id}.json", canonical_json(state).encode())
         store.write(publication_key, canonical_json(state).encode())
+        emit(observer, "COMMIT", "SUCCEEDED")
         LOGGER.info("snapshot_published", extra={"batch_id": batch_id})
         return state
     except Exception as exc:

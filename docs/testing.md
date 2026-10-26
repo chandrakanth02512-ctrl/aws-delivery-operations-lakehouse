@@ -15,6 +15,7 @@ uv run python scripts/fetch_iceberg.py
 ICEBERG_SPARK_JAR=artifacts/iceberg-spark-runtime-4.1_2.13-1.11.0.jar \
   uv run pytest --cov=delivery_lakehouse --cov-report=term-missing --junitxml=artifacts/pytest.xml
 uv run python scripts/package_glue.py
+uv build
 ```
 
 `fetch_iceberg.py` downloads pinned Iceberg 1.11.0 (Spark 4.1 / Scala 2.13) and H2 2.4.240 JARs from
@@ -93,5 +94,38 @@ Phase 1 adoption. Protocol/Bronze/state tests cover deterministic input, missing
 interrupted immutable ingestion, schema policies, reports, logging and upload gating.
 
 Tests use unique local namespaces and temporary data directories. They do not use AWS credentials.
-The [Phase 2 verification report](phase2-verification.md) records the latest complete run; partial
+The [Phase 2 verification report](phase2-verification.md) preserves its historical complete run; partial
 focused runs are debugging evidence, not a substitute for the final combined suite.
+
+## Phase 3 operations, SQL and recovery
+
+The same full-suite command now includes `tests/operations/` alongside every Phase 1/2 test:
+
+```bash
+uv run pytest tests/operations/test_control.py tests/operations/test_glue_adapter.py \
+  tests/operations/test_operations_infrastructure.py -q
+ICEBERG_SPARK_JAR=artifacts/iceberg-spark-runtime-4.1_2.13-1.11.0.jar \
+  uv run pytest tests/operations -q
+```
+
+Control tests check execution ordering, request identity, replay/resume, bounded retry classification,
+final-record commit loss, competing local writers, counts and failure diagnostics even when state
+storage fails. Adapter tests mock Glue libraries; they assert parameter forwarding and that failed
+execution cannot call `Job.commit()`. They are not managed Glue integration tests.
+
+Real local Iceberg operations tests load all six sources, verify the 16-table CDC publication, inject
+a transient verification failure after writes, retry its frozen plan, reject invalid relationships,
+recover through a corrected source batch and compare all nine Gold tables with full recomputation.
+They also execute and verify the snapshot path, detect missing/duplicate/changed/schema-incompatible
+stored rows, and prove an event-only CDC batch creates no Gold plan or new Gold snapshot.
+
+SQL tests execute the hand-calculated boundary cohorts described in [analytics](analytics.md).
+Infrastructure tests check manual-only orchestration, reuse of the bounded existing job, role scope,
+opt-in monitoring and disabled alarm actions. `cfn-lint` validates all three templates locally;
+no AWS `ValidateTemplate`, IAM simulation, deployment or Step Functions execution is performed.
+
+The [Phase 3 verification report](phase3-verification.md) records the final combined results and
+coverage. [Performance evidence](performance.md) describes the narrow Gold-planning benchmark and
+its limits. Focused results are supplementary; the combined regression and hosted CI remain the
+release checks. Run Spark tests sequentially in one process; concurrent JVMs can distort timing and
+exhaust a small machine. Only the explicitly opted-in bucket readiness test is live AWS.
