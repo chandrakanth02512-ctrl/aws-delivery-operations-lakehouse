@@ -13,6 +13,7 @@ local-day reporting can be added explicitly with the dimension's IANA timezone.
 | First-attempt success % | 100 × shipments with successful attempt #1 / shipments with accepted attempt #1 | Missing first-attempt evidence excluded; no additional status filter |
 | Failed delivery % | 100 × FAILED shipments / (DELIVERED + FAILED shipments) | Terminal delivery outcomes only; cancellation is not a failed delivery |
 | Failed attempt % | 100 × failed accepted attempts / all accepted attempts | A failed attempt followed by successful redelivery still counts as a failed attempt |
+| Cancellation % | 100 × CANCELLED shipments / all accepted unique shipments | Includes pending and terminal outcomes in denominator; distinct from terminal failure |
 | Station/driver performance | Same formulas grouped by station/assigned driver | Compare workload and conditions before ranking |
 
 Zero denominators produce **NULL**, not zero. Average delay is not a signed earliness/lateness measure

@@ -22,10 +22,27 @@ must not be used to delete or bypass CDC state, tombstones or a pending publicat
 | Quality gate fails | Read `quarantine/<batch>/quality_report.json` and reason arrays. Fix the source or review the threshold as a business decision; do not discard rejects. |
 | Partially published snapshot | `_publication.json` is FAILED/RUNNING. Do not query mixed versions. Rerun the same batch serially after correcting the failure. Table replacements converge; no cross-table atomicity is claimed. |
 | Tables manually removed but replay says no-op | No-op trusts the publication record. After review, invalidate that record or bump the package version and rebuild. Never mutate curated tables outside the pipeline without a recovery procedure. |
-| 15-minute timeout on larger profiles | Do not raise workers/timeout automatically. Inspect stage logs and first prove the small profile within the approved budget. Performance work is Phase 3. |
+| 15-minute timeout on larger profiles | Do not raise workers/timeout automatically. Inspect stage logs and first prove the small profile within the approved budget. See the measured scope and retained scan limits in docs/performance.md. |
 | Athena scan cutoff | Narrow the query or projection. Raising the cap requires a deliberate cost decision. The small-profile queries should fit; live verification is pending. |
 | Deleted stack fails to recreate databases | Catalog databases use Retain. Import retained resources or do an owner-led cleanup; do not blindly delete data. |
 
 Logging is JSON at application boundaries, with batch IDs and failure types. Spark and AWS retain
 their native logs as well. The Glue custom error/output log groups have seven-day retention. Cost
 protection depends on review and manual execution; the $10 budget is not an automatic stop switch.
+
+## Phase 3 execution diagnostics
+
+For `EXECUTION_REQUIRES_EXPLICIT_RESUME`, inspect the failed/RUNNING execution report, then use the
+same request and execution ID with `--resume` only after resolving its cause. A live competing writer
+must finish first. `EXECUTION_ID_REUSED_WITH_DIFFERENT_PARAMETERS` requires the original parameters
+or a deliberately new execution ID; never erase state to bypass it.
+
+`PUBLICATION_VERIFICATION_FAILED` means stored schema/rows differ from the saved expected result.
+Do not release readers, advance checkpoints manually or delete the frozen plan. A genuine mismatch
+needs investigation; a recognized transient read failure can use bounded retry. If execution-state
+storage fails too, inspect structured `pipeline_attempt_failed` logs for the original exception.
+
+If optional metrics are absent later in AWS, first confirm monitoring was approved/enabled, the real
+Glue error log group and JSON format, then filter behavior. Missing metrics are not proof of success.
+See [operations recovery](operations.md#recovery-runbook), [monitoring](monitoring.md), and
+[live acceptance prerequisites](release-checklist.md). No cloud action has been performed by these instructions.
