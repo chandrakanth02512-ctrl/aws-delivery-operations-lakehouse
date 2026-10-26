@@ -1,0 +1,109 @@
+{
+  "source": "synthetic only",
+  "batch_id": "01bc8423e1ea47518b661f9b4145989ef219ec686deec64953cf790fd37ddfd3",
+  "profile": "small",
+  "seed": 42,
+  "spark_version": "4.1.1",
+  "publication_status": "SUCCEEDED",
+  "replay_identical": true,
+  "curated_tables": [
+    "gold.dim_customer",
+    "gold.dim_date",
+    "gold.dim_driver",
+    "gold.dim_station",
+    "gold.fact_delivery_attempts",
+    "gold.fact_shipments",
+    "gold.kpi_daily",
+    "gold.kpi_driver_daily",
+    "gold.kpi_station_daily",
+    "silver.customers",
+    "silver.delivery_attempts",
+    "silver.delivery_events",
+    "silver.delivery_stations",
+    "silver.drivers",
+    "silver.shipments"
+  ],
+  "quality": [
+    {
+      "dataset": "delivery_stations",
+      "input_rows": 3,
+      "accepted_rows": 3,
+      "quarantined_rows": 0,
+      "reject_fraction": 0.0,
+      "reason_counts": {},
+      "reconciled": true
+    },
+    {
+      "dataset": "drivers",
+      "input_rows": 18,
+      "accepted_rows": 18,
+      "quarantined_rows": 0,
+      "reject_fraction": 0.0,
+      "reason_counts": {},
+      "reconciled": true
+    },
+    {
+      "dataset": "customers",
+      "input_rows": 60,
+      "accepted_rows": 60,
+      "quarantined_rows": 0,
+      "reject_fraction": 0.0,
+      "reason_counts": {},
+      "reconciled": true
+    },
+    {
+      "dataset": "shipments",
+      "input_rows": 126,
+      "accepted_rows": 120,
+      "quarantined_rows": 6,
+      "reject_fraction": 0.047619047619047616,
+      "reason_counts": {
+        "DELIVERY_STATUS_TIMESTAMP_MISMATCH": 1,
+        "DUPLICATE_PRIMARY_KEY": 1,
+        "FOREIGN_KEY:customer_id": 1,
+        "INVALID_ENUM:status": 1,
+        "INVALID_TYPE:weight_kg": 1,
+        "PROMISE_BEFORE_CREATION": 1,
+        "REQUIRED:shipment_id": 1,
+        "REQUIRED:weight_kg": 1
+      },
+      "reconciled": true
+    },
+    {
+      "dataset": "delivery_attempts",
+      "input_rows": 140,
+      "accepted_rows": 138,
+      "quarantined_rows": 2,
+      "reject_fraction": 0.014285714285714285,
+      "reason_counts": {
+        "DUPLICATE_PRIMARY_KEY": 1,
+        "REQUIRED:attempt_id": 1
+      },
+      "reconciled": true
+    },
+    {
+      "dataset": "delivery_events",
+      "input_rows": 398,
+      "accepted_rows": 396,
+      "quarantined_rows": 2,
+      "reject_fraction": 0.005025125628140704,
+      "reason_counts": {
+        "DUPLICATE_PRIMARY_KEY": 1,
+        "REQUIRED:event_id": 1
+      },
+      "reconciled": true
+    }
+  ],
+  "overall_kpis": {
+    "total_shipments": 120,
+    "delivered_shipments": 102,
+    "on_time_deliveries": 48,
+    "failed_shipments": 6,
+    "total_attempts": 138,
+    "failed_attempts": 36,
+    "on_time_delivery_pct": 47.05882352941176,
+    "avg_delivery_delay_minutes": 279.32352941176,
+    "first_attempt_success_pct": 77.77777777777779,
+    "failed_delivery_pct": 5.55555555555556
+  }
+}

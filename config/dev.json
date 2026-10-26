@@ -1,0 +1,10 @@
+{
+  "environment": "dev",
+  "region": "ap-southeast-2",
+  "bucket": "ck-delivery-ops-lakehouse-2026-1025",
+  "database_prefix": "delivery_ops_dev",
+  "profile": "small",
+  "seed": 42,
+  "start_date": "2026-01-01",
+  "max_reject_fraction": 0.15
+}
