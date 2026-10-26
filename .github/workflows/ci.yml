@@ -1,9 +1,9 @@
-name: Phase 1 quality
+name: Lakehouse quality
 on:
   push:
     branches: [main, 'feat/**']
   pull_request:
-    branches: [main]
+    branches: [main, 'feat/phase-1-lakehouse']
 permissions:
   contents: read
 concurrency:
@@ -12,7 +12,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -42,11 +42,13 @@ jobs:
           ICEBERG_SPARK_JAR: artifacts/iceberg-spark-runtime-4.1_2.13-1.11.0.jar
         run: uv run pytest --cov=delivery_lakehouse --cov-report=term-missing --junitxml=artifacts/pytest.xml
       - name: Build Glue import package
-        run: uv run python scripts/package_glue.py
+        run: |
+          uv build
+          uv run python scripts/package_glue.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
-          name: phase1-verification
+          name: lakehouse-verification
           path: |
             artifacts/pytest.xml
             dist/delivery_lakehouse.zip

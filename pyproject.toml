@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "delivery-lakehouse"
-version = "0.1.0"
+version = "0.2.0"
 description = "Synthetic last-mile delivery operations lakehouse on AWS"
 requires-python = ">=3.13,<3.14"
 dependencies = ["boto3==1.42.84"]
@@ -17,6 +17,7 @@ dev = ["pytest>=8.3,<10", "pytest-cov>=6,<8", "ruff>=0.12,<1", "cfn-lint>=1.40,<
 
 [project.scripts]
 delivery-lakehouse = "delivery_lakehouse.cli:main"
+delivery-lakehouse-cdc = "delivery_lakehouse.cdc.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/delivery_lakehouse"]

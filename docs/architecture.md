@@ -1,5 +1,9 @@
 # Architecture and decisions
 
+This document describes the preserved Phase 1 snapshot path. Phase 2 adds an incremental mode to
+the same job: see [CDC architecture](cdc-architecture.md) for ordering, schema policy, MERGE,
+delete semantics and recovery. CDC local mode uses persisted Iceberg tables, not Parquet-only output.
+
 ```mermaid
 flowchart LR
     Gen[Seeded Python generator\n6 synthetic source contracts] --> L[S3 landing/\nJSONL + SHA-256 manifest]
@@ -37,8 +41,8 @@ erDiagram
 ```
 
 - **Snapshot scope:** each manifest is a complete synthetic source snapshot. Silver and Gold replace
-  the current contents, not append another copy. Different batches are not unioned. Source CDC,
-  SCD2 dimensions, late data watermarks and incremental merges belong to Phase 2.
+  the current contents, not append another copy. Different snapshot batches are not unioned. Source
+  CDC, late data checkpoints and incremental merges are implemented in Phase 2. SCD2 is not implemented.
 - **Identity:** canonical manifest hashes derive batch IDs; per-line identities distinguish repeated
   records. A changed payload creates a new batch, while reusing an ID with different bytes fails.
 - **Storage:** existing bucket only. No crawler, additional bucket, VPC/NAT gateway, endpoint,

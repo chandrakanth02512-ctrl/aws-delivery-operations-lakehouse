@@ -18,8 +18,8 @@ uv run python scripts/package_glue.py
 ```
 
 `fetch_iceberg.py` downloads pinned Iceberg 1.11.0 (Spark 4.1 / Scala 2.13) and H2 2.4.240 JARs from
-Maven Central and checks committed SHA-256 digests. Without `ICEBERG_SPARK_JAR`, three local Iceberg
-tests are skipped; this must not be represented as full Iceberg validation. Default tests skip live
+Maven Central and checks committed SHA-256 digests. Without `ICEBERG_SPARK_JAR`, the local Iceberg
+snapshot and CDC integration tests are skipped; this is not full validation. Default tests skip live
 AWS. The CI workflow downloads these dependencies and runs all local Iceberg tests.
 
 - Unit tests verify deterministic generators (including medium/large counts), schemas/FKs, immutable
@@ -59,3 +59,39 @@ A paid cloud smoke test requires the separate procedure in [deployment.md](deplo
 by evidence capture: JobRunId and status, publication JSON, report totals, table format metadata,
 Athena QueryExecutionIds/results, elapsed DPU time and actual billed usage. Do not label those passed
 until they have actually completed. Full managed Glue runtime validation is not replaced by local tests.
+
+## Phase 2 coverage and focused commands
+
+The full command above includes all preserved Phase 1 tests and `tests/cdc/`. Focused tests:
+
+```bash
+uv run pytest tests/cdc/test_protocol.py tests/cdc/test_bronze.py tests/cdc/test_state.py -q
+ICEBERG_SPARK_JAR=artifacts/iceberg-spark-runtime-4.1_2.13-1.11.0.jar \
+  uv run pytest tests/cdc -q
+uv lock --check
+uv build
+```
+
+`test_sequence.py` processes six batches and compares all nine incremental Gold tables with a full
+recomputation from final Silver. It verifies Monday/Wednesday lateness, duplicate batches/events,
+tombstones, old checkpoint replay, compatible additions, event-only arrivals and unchanged fact
+snapshot counts. `test_ordering.py` checks versions, timestamp/hash ties and deleted-key ordering.
+
+`test_recovery.py` injects failures after Silver shipment MERGE, Gold fact MERGE, Gold KPI MERGE,
+and during the final success-record write. These deliberately fail **after** side effects, before
+the next checkpoint. Tests verify the active-batch gate, frozen-plan reuse, state transitions,
+watermark preservation, retry idempotency and post-recovery full-recomputation equality.
+
+`test_merge.py` also reopens the local JDBC catalog through an independent connection, preventing
+the H2 identifier-case regression that single-session tests cannot detect. The CLI has additionally
+been exercised through a real load/replay in separate processes.
+
+`test_integrity.py` covers reassignment with historical attempts, corrected attempt numbering,
+old/new date and driver groups, restricted parent deletion, explicit child deletion, empty groups,
+breaking schema quarantine, invalid-newer/valid-older ordering, retry after a newer batch and explicit
+Phase 1 adoption. Protocol/Bronze/state tests cover deterministic input, missing files, checksums,
+interrupted immutable ingestion, schema policies, reports, logging and upload gating.
+
+Tests use unique local namespaces and temporary data directories. They do not use AWS credentials.
+The [Phase 2 verification report](phase2-verification.md) records the latest complete run; partial
+focused runs are debugging evidence, not a substitute for the final combined suite.
