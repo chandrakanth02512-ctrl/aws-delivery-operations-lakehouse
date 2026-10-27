@@ -54,6 +54,7 @@ def compare_schema(dataset, observed):
             compatible = (
                 isinstance(definition, dict)
                 and definition.get("nullable") is True
+                and isinstance(definition.get("type"), str)
                 and definition.get("type") in {"string", "int", "double", "date", "timestamp"}
             )
             diagnostics.append(

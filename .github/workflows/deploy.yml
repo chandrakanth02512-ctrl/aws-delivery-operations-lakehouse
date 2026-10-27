@@ -41,7 +41,7 @@ jobs:
           python-version: '3.13'
       - name: Install locked tools and validate templates
         run: |
-          python -m pip install uv==0.12.23
+          python -m pip install uv==0.13.4
           uv sync --frozen
           uv run ruff check .
           uv run cfn-lint infrastructure/*.yaml

@@ -19,7 +19,8 @@ and checksum failures fail the whole batch; they are source integrity failures, 
 
 Output objects are deterministic per batch/entity. A Bronze manifest is committed only after all
 objects are written. Retries rewrite incomplete batches, while completed batches are read-only and
-hash-verified. This depends on serialized writers; it is not a distributed ingestion lock.
+hash-verified. Replays also bind the committed manifest to the source batch, dataset set, expected
+Bronze object keys and row counts. This depends on serialized writers; it is not a distributed ingestion lock.
 
 ## Silver
 
@@ -28,7 +29,8 @@ keys do not become valid parents. Children with absent accepted parents are quar
 
 1. Parse JSON objects, retain the raw line and lineage, normalize names to lower snake case (spaces
    and hyphens to underscores), reject collisions, nested values and unexpected fields. The fixed Phase 1 contract
-   does not silently absorb schema evolution.
+   does not silently absorb schema evolution. Bare NaN/Infinity JSON constants are malformed even
+   when they appear in a text field; quoted numeric values still follow the field's cast/domain rules.
 2. Trim values and turn empty strings into null. Uppercase enumerations. Use ANSI-safe `try_cast`
    for dates, timestamps, integers and doubles; require an explicit timezone for timestamps.
 3. Quarantine missing required values, invalid enums, invalid casts, nonfinite/negative metrics,

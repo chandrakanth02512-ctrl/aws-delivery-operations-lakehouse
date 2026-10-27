@@ -47,7 +47,8 @@ flowchart LR
 One Glue job supports snapshot and CDC modes through a shared execution runner. A prepared manual
 Step Functions workflow starts that existing job and waits for its result; local execution uses the same
 runner and transformations. The tests run real Iceberg writes and MERGE operations with a local JDBC catalog;
-they do not require an AWS account. The existing Sydney bucket and infrastructure are reused.
+they do not require an AWS account. Prepared infrastructure targets the existing Sydney bucket;
+its live account configuration remains unverified.
 
 **Engineering choices worth reviewing:**
 
@@ -81,7 +82,7 @@ See [layer design](docs/layers.md) for the exact contracts and handling rules.
 
 ## Run locally
 
-Use Python 3.13, Java 17+ and `uv`:
+Use Python 3.13, Java 17+ and `uv` **0.13.4 or later** (the workflows pin 0.13.4):
 
 ```bash
 uv sync --frozen --extra spark
@@ -124,8 +125,8 @@ the Athena engine and its metadata-table syntax remain pending live acceptance.
 
 ## Verify
 
-**Final local regression: 157 passed, 1 intentionally skipped, zero failures in 957.76 seconds;
-92% package line coverage.** The skipped test requires live AWS authorization. The suite includes
+**Final local regression: 173 passed, 1 intentionally skipped, zero failures in 931.17 seconds;
+91.92% package line coverage (92% rounded).** The skipped test requires live AWS authorization. The suite includes
 all Phase 1/2 tests, actual local Spark/Iceberg MERGE and recovery, Phase 3 execution control and SQL
 analytics. [GitHub Actions](https://github.com/chandrakanth02512-ctrl/aws-delivery-operations-lakehouse/actions/workflows/ci.yml)
 repeats these checks for pull requests and main; consult the check on the specific commit being reviewed.
@@ -144,8 +145,9 @@ uv build
 uv run python scripts/package_glue.py
 ```
 
-The [Phase 3 verification report](docs/phase3-verification.md) records the current combined regression
-results, coverage, CI and runtime limitations. [Phase 1](docs/verification.md) and
+The [technical audit](docs/technical-audit.md) records the subsequent fixes, security review and
+current verification. The [Phase 3 verification report](docs/phase3-verification.md) preserves its
+original regression results and runtime limitations. [Phase 1](docs/verification.md) and
 [Phase 2](docs/phase2-verification.md) evidence remain historical records. [Testing instructions](docs/testing.md)
 distinguish local Spark/Iceberg tests, stubbed S3 tests and explicitly opted-in live AWS checks.
 
@@ -222,6 +224,11 @@ an owner using temporary credentials, then GitHub obtains short-lived credential
 Only this repository's approved `main` branch is trusted. There are no AWS access-key secrets.
 Deployment workflows cannot start jobs or queries, and nothing is deployed automatically on push.
 
+**Account blocker:** the owner reports an Organizations SCP denying OIDC-provider discovery.
+AWS deployment remains paused pending resolution through AWS Support/the organization administrator.
+Do not bypass that restriction or create IAM resources to work around it. Account credits and
+service eligibility have not been independently verified by this audit.
+
 Glue is pinned to **6.0, G.1X, two workers, 15-minute timeout, zero retries, concurrency one**.
 There are no recurring schedules or continuously running workloads. A conservative planning estimate
 is **$1–$4/month for ten small manual runs**, before credits; see [cost assumptions](docs/costs.md).
@@ -235,7 +242,7 @@ The existing $10 budget alert is not a hard spending limit. Never upgrade the Fr
 [Layer design](docs/layers.md) · [KPI definitions](docs/kpis.md) ·
 [Troubleshooting](docs/troubleshooting.md) · [File inventory](docs/file-inventory.md)
 · [Phase 2 file inventory](docs/phase2-file-inventory.md)
-· [Phase 3 file inventory](docs/phase3-file-inventory.md) · [Private release checklist](docs/release-checklist.md)
+· [Phase 3 file inventory](docs/phase3-file-inventory.md) · [Release checklist](docs/release-checklist.md)
 
 | Phase | Scope | Status |
 |---|---|---|

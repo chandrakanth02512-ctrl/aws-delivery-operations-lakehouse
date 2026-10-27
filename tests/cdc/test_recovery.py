@@ -106,3 +106,50 @@ def test_partial_publication_recovers_from_durable_plan(
         actual = spark.table(f"lakehouse.{settings.database_prefix}_gold.{name}")
         assert expected[name].select(*actual.columns).exceptAll(actual).count() == 0
         assert actual.exceptAll(expected[name].select(*actual.columns)).count() == 0
+
+
+def test_abrupt_process_loss_recovers_running_batch_after_a_real_merge(spark, seeded_cdc):
+    store, settings, data, _ = seeded_cdc
+    shipment = {**data["shipments"][0], "weight_kg": 7.25}
+    batch = write_batch(
+        store,
+        "abrupt-process-loss",
+        "2026-02-07T12:00:00Z",
+        [make_change("shipments", shipment, "UPDATE", 2, "2026-02-07T09:00:00Z")],
+    )
+    before = load_json(store, CHECKPOINT_KEY)
+
+    class ProcessStopped(BaseException):
+        pass
+
+    def stop_after_merge(step):
+        if step == "silver.shipments":
+            raise ProcessStopped()
+
+    with pytest.raises(ProcessStopped):
+        run_cdc(
+            spark,
+            store,
+            settings,
+            batch["batch_id"],
+            catalog="lakehouse",
+            failure_hook=stop_after_merge,
+        )
+    interrupted = load_json(store, state_key(batch["batch_id"]))
+    assert interrupted["status"] == "RUNNING"
+    assert "silver.shipments" not in interrupted["completed_steps"]
+    assert load_json(store, PUBLICATION_KEY)["status"] == "RUNNING"
+    assert (
+        load_json(store, CHECKPOINT_KEY)["source_event_watermark"]
+        == before["source_event_watermark"]
+    )
+    with pytest.raises(RuntimeError, match="RECOVER_ACTIVE_BATCH_FIRST"):
+        run_cdc(spark, store, settings, "b" * 64, catalog="lakehouse")
+    recovered = run_cdc(spark, store, settings, batch["batch_id"], catalog="lakehouse")
+    assert recovered["status"] == "SUCCEEDED"
+    assert recovered["plan_key"] == interrupted["plan_key"]
+    assert load_json(store, CHECKPOINT_KEY)["active_batch_id"] is None
+    for layer, name in [("silver", "shipments"), ("gold", "fact_shipments")]:
+        frame = spark.table(f"lakehouse.{settings.database_prefix}_{layer}.{name}")
+        assert frame.count() == 1
+        assert frame.first().weight_kg == 7.25

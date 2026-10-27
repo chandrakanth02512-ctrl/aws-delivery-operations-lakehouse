@@ -65,6 +65,8 @@ an **observability checkpoint, not a filtering threshold**. A new key or higher 
 event time is still processed. Business dates come from shipment `promised_at`, not arrival time or
 the watermark. A timestamp anomaly can therefore affect the displayed watermark without excluding
 later legitimate late events. Source clocks and version resets need an explicit upstream correction.
+Watermarks are collected from Spark as offset-bearing strings, preserving microseconds without
+depending on the Python driver's host timezone.
 
 ## Immutable Bronze and traceability
 
@@ -149,7 +151,8 @@ This avoids full **publication/rebuilding** of unchanged tables. It does not cla
 O(delta): reference validation scans prospective relationships, affected-date aggregation scans all
 members of those cohorts, and unpartitioned tiny Iceberg tables can rewrite shared data files. JSON
 source decoding is bounded, driver-side work intended for portfolio profiles. Partition pruning,
-distributed ingestion and measured large-volume tuning remain Phase 3 work.
+distributed ingestion and measured large-volume tuning remain future work. Phase 3's measured
+event-only optimization and remaining limits are recorded in [performance](performance.md).
 
 ## State, publication and recovery
 

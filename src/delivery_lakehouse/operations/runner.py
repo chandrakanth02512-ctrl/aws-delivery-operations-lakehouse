@@ -166,6 +166,16 @@ def run_execution(
         "events": [],
         "work_started": False,
     }
+    # Resume is permitted only after the previous writer has stopped. Its precise
+    # stop time is unknown, so record when the interruption was observed instead.
+    for attempt in state["attempts"]:
+        if attempt["status"] == "RUNNING":
+            attempt.update(
+                status="INTERRUPTED",
+                interruption_observed_at=now(),
+                error_category="PROCESS_INTERRUPTED",
+                error="Previous invocation stopped before recording its outcome",
+            )
     save_execution(store, state)
 
     def observe(stage, status, details):

@@ -4,12 +4,18 @@
 GitHub repository access does not grant AWS access. Nothing in CI deploys or starts jobs. The steps
 below are for the owner after IAM review and explicit approval, not commands already executed.
 
-**Phase 2 update:** no IAM or CloudFormation changes are required. The same release package/job now
-supports `--pipeline_mode cdc`; see [CDC operations](cdc-operations.md). The Phase 2 PR is stacked on
-`feat/phase-1-lakehouse` while PR #1 remains unmerged. Review/merge in dependency order, then prepare
-the release from the final reviewed main commit. Never dispatch deployment from a feature branch.
+**Current account blocker (27 October 2026):** the owner reports an Organizations SCP denying
+`iam:ListOpenIDConnectProviders`. This audit performs no AWS API calls. Stop the setup procedure
+until AWS Support/the organization administrator resolves the restriction and the owner authorizes
+deployment. Do not bypass the SCP, assume a denied lookup means no provider exists, create a duplicate
+provider, or upgrade the account plan. The last owner-reported credit balance is not a live balance check.
 
-**Phase 3 update:** the release is now 0.3.0 and the existing Glue adapter uses execution control and
+**Phase 2 update:** the same release package/job supports `--pipeline_mode cdc`; see
+[CDC operations](cdc-operations.md). All three phase PRs are merged into `main`. Prepare a release
+only from the final reviewed main commit after the audit fixes are reviewed; never dispatch deployment
+from a feature branch. The audit does not change IAM policies or resource definitions.
+
+**Phase 3 update:** the audited patch release is 0.3.1 and the existing Glue adapter uses execution control and
 stored-row verification in both modes. Review the PRs in [stack order](release-checklist.md) before
 preparing the final main release. `infrastructure/operations.yaml` is a separate owner-reviewed
 manual Step Functions/optional monitoring stack. The existing GitHub and CloudFormation deployment
@@ -33,7 +39,7 @@ scoping. Wildcards on table/object/log-stream ARNs are bounded to this project. 
 prevent deployment identities from starting compute even if another policy is later attached.
 `iam:PassRole` has both a single role ARN and an exact `iam:PassedToService` condition.
 
-Runtime privileges can read all six project prefixes and delete current curated/quarantine objects;
+Runtime privileges can read Landing, Bronze, Silver, Gold and quarantine and delete current curated/quarantine objects;
 that is required for replacement writes. Do not use these prefixes for unrelated data. There is no
 permission to write Landing from the Glue runtime. The GitHub identity can change the job's code and
 parameters, so protect `main`, review workflow/script changes, and keep runtime privileges bounded.
@@ -48,7 +54,8 @@ parameters, so protect `main`, review workflow/script changes, and keep runtime 
    and ownership settings read-only. These templates do not create the bucket or change its security.
    SSE-S3 is the assumed data path. If the existing bucket requires a customer-managed KMS key, stop
    for an additional least-privilege key-policy review; do not weaken the bucket's policy.
-3. In IAM → Identity providers, look for `token.actions.githubusercontent.com`. If it exists, copy its
+3. Only after the SCP issue is resolved and read-only access is authorized, inspect IAM → Identity providers
+   for `token.actions.githubusercontent.com`. If it exists, copy its
    ARN and use `ExistingOidcProviderArn`; leave that parameter empty only if it does not exist.
    The existing provider must include audience `sts.amazonaws.com`. Do not create a duplicate provider.
 4. In CloudFormation, select Sydney → create stack **with a change set** → upload
@@ -69,7 +76,7 @@ parameters, so protect `main`, review workflow/script changes, and keep runtime 
    PRs and successful CI on `main`, including changes to `.github/workflows/` and `infrastructure/`.
    Do not attach a GitHub Environment to this job without revisiting OIDC trust: environments change
    the default subject from branch-based to environment-based. The supplied trust requires main.
-7. Review and merge the phase PRs in order. In Actions → **Reviewed AWS infrastructure**, select **main**, set
+7. Confirm the audit PR is reviewed and the intended main commit passes CI. In Actions → **Reviewed AWS infrastructure**, select **main**, set
    `operation=plan`, and type `DEPLOY_REVIEWED_INFRASTRUCTURE`. This explicitly approved workflow
    uploads two immutable release objects and creates a CloudFormation change set; it does not execute
    it. Download `infrastructure-review-<run-id>` and review `change-set.json` and AWS Console changes.
@@ -86,8 +93,8 @@ CLI equivalent for step 4, in a separately authorized temporary AWS session with
 ```bash
 aws sts get-caller-identity
 aws s3api get-bucket-location --bucket ck-delivery-ops-lakehouse-2026-1025
-aws iam list-open-id-connect-providers
-# If a provider exists, supply its ARN instead of the empty value below.
+# STOP while the reported SCP blocks OIDC-provider discovery. Do not run the change set below.
+# After authorized discovery confirms the provider state, supply an existing ARN if present.
 aws cloudformation create-change-set \
   --region ap-southeast-2 --stack-name delivery-ops-bootstrap \
   --change-set-name bootstrap-review --change-set-type CREATE \

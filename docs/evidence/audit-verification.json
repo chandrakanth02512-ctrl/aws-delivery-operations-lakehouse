@@ -1,0 +1,95 @@
+{
+  "audit_date": "2026-10-27",
+  "baseline_commit": "82afc56c27edd19ad87a80aa0e9f212d0747dbcc",
+  "branch": "fix/technical-audit",
+  "package_version": "0.3.1",
+  "scope": {
+    "baseline_files_reviewed": 118,
+    "result_files_reviewed": 121,
+    "new_files": 3
+  },
+  "baseline": {
+    "passed": 157,
+    "skipped": 1,
+    "failures": 0,
+    "errors": 0,
+    "seconds": 838.21,
+    "covered_lines": 1517,
+    "statements": 1652
+  },
+  "final_local": {
+    "passed": 173,
+    "skipped": 1,
+    "failures": 0,
+    "errors": 0,
+    "seconds": 931.173,
+    "coverage": {
+      "covered_lines": 1525,
+      "num_statements": 1659,
+      "percent_covered": 91.92284508740205,
+      "percent_covered_display": "92",
+      "missing_lines": 134,
+      "excluded_lines": 6,
+      "percent_statements_covered": 91.92284508740205,
+      "percent_statements_covered_display": "92"
+    },
+    "skip_reason": "Live AWS access not authorized/configured"
+  },
+  "focused": {
+    "unit_control": {
+      "passed": 78,
+      "seconds": 1.44
+    },
+    "spark_iceberg": {
+      "passed": 12,
+      "seconds": 111.45
+    }
+  },
+  "checks": {
+    "ruff": "passed",
+    "ruff_format": "passed",
+    "cfn_lint_templates": 3,
+    "data_dictionary": "passed",
+    "uv_pip_check": "passed",
+    "uv_lock_check": "passed",
+    "wheel_sdist_glue_zip": "passed",
+    "git_diff_check": "passed"
+  },
+  "security": {
+    "pip_audit_version": "2.10.1",
+    "locked_packages_and_build_tools": 31,
+    "known_vulnerabilities_after_fix": 0,
+    "uv_advisory": "GHSA-hq85-5cpj-mr62",
+    "uv_fixed_version": "0.13.4",
+    "gitleaks_version": "8.24.3",
+    "baseline_reachable_commits": 7,
+    "baseline_unique_blobs": 152,
+    "secret_findings": 0,
+    "bandit_version": "1.9.4",
+    "bandit_reviewed_findings": {
+      "high": 0,
+      "medium": 4,
+      "low": 6
+    },
+    "main_branch_protected": false,
+    "repository_rulesets": 0
+  },
+  "runtime": {
+    "python": "3.13.5",
+    "spark": "4.1.1",
+    "java": "21.0.12.1",
+    "iceberg": "1.11.0",
+    "h2": "2.4.240",
+    "pytest": "9.1.1",
+    "ruff": "0.17.2",
+    "cfn_lint": "1.58.0",
+    "uv": "0.13.4"
+  },
+  "hosted_ci": "Consult the audit pull request checks and final handoff for the exact head commit result; this file records local verification.",
+  "aws": {
+    "api_calls_performed": false,
+    "live_tests_performed": false,
+    "deployment_performed": false,
+    "readiness": "BLOCKED: owner-reported Organizations SCP; managed integration remains unverified."
+  }
+}

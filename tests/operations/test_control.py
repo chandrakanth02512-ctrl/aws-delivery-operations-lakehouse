@@ -361,3 +361,30 @@ def test_local_writer_lock_prevents_a_second_execution(tmp_path, monkeypatch):
         fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
         with pytest.raises(BlockingIOError):
             main()
+
+
+def test_resume_closes_interrupted_attempt_without_inventing_a_completion_time(source, monkeypatch):
+    store, batch = source
+
+    class ProcessStopped(BaseException):
+        pass
+
+    def interrupted(*args, **kwargs):
+        kwargs["observer"]("PUBLISH", "RUNNING", {})
+        raise ProcessStopped()
+
+    monkeypatch.setattr(runner, "run_cdc", interrupted)
+    with pytest.raises(ProcessStopped):
+        runner.run_execution(None, store, Settings(), batch, execution_id="process-stopped")
+    saved = load_json(store, runner.execution_key("process-stopped"))
+    assert saved["status"] == saved["attempts"][0]["status"] == "RUNNING"
+    monkeypatch.setattr(runner, "run_cdc", fake_success)
+    recovered = runner.run_execution(
+        None, store, Settings(), batch, execution_id="process-stopped", resume=True
+    )
+    assert [attempt["status"] for attempt in recovered["attempts"]] == ["INTERRUPTED", "SUCCEEDED"]
+    interrupted_attempt = recovered["attempts"][0]
+    assert interrupted_attempt["error_category"] == "PROCESS_INTERRUPTED"
+    assert interrupted_attempt["interruption_observed_at"] >= interrupted_attempt["started_at"]
+    assert interrupted_attempt.get("completed_at") is None
+    assert interrupted_attempt.get("duration_seconds") is None

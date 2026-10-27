@@ -62,6 +62,20 @@ def test_schema_compatibility_policy(mutation, classification, reason):
     assert not compare_schema("shipments", source_schema("shipments"))
 
 
+@pytest.mark.parametrize("invalid_type", [["string"], {"name": "string"}])
+def test_malformed_added_type_is_reported_as_breaking_schema(invalid_type):
+    schema = source_schema("shipments")
+    schema["notes"] = {"type": invalid_type, "nullable": True}
+    assert compare_schema("shipments", schema) == [
+        {
+            "field": "notes",
+            "change": "ADDED_COLUMN",
+            "classification": "breaking",
+            "policy": "quarantine",
+        }
+    ]
+
+
 @pytest.mark.parametrize(
     "mutation,reason",
     [

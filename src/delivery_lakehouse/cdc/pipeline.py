@@ -253,12 +253,17 @@ def stage_plan(
             stage(
                 "gold", name, before_gold[name].limit(0).withColumn("_delete", F.lit(False)), keys
             )
-    latest = silver_plan["state_delta"].agg(F.max("source_event_at")).first()[0]
+    # Collect an offset-bearing string: PySpark converts collected TimestampType
+    # values to naive datetimes in the Python host timezone, not the SQL timezone.
+    latest = (
+        silver_plan["state_delta"]
+        .agg(F.date_format(F.max("source_event_at"), "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX"))
+        .first()[0]
+    )
     previous = checkpoint.get("source_event_watermark")
     watermark = max([event_time(previous)] if previous else [], default=None)
     if latest:
-        # Spark returns naive Python datetimes for UTC-session timestamps.
-        latest = event_time(latest.isoformat() + "+00:00")
+        latest = event_time(latest)
         watermark = max(watermark, latest) if watermark else latest
     plan = {
         "batch_id": state["batch_id"],

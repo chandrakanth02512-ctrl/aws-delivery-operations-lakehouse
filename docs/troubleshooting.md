@@ -15,6 +15,7 @@ must not be used to delete or bypass CDC state, tombstones or a pending publicat
 | OIDC subject rejected | Workflow must run in the exact repository on main, with audience sts.amazonaws.com. Forks, PR subjects and GitHub Environment subjects are intentionally rejected. |
 | Deployment job skipped | Verify manual dispatch on main, exact approval phrase and `AWS_DEPLOYMENT_APPROVED=true`, only after the owner approves IAM. |
 | OIDC provider already exists | Use its ARN as `ExistingOidcProviderArn` in bootstrap. Do not create another provider or delete a shared one. |
+| Organizations SCP denies OIDC-provider discovery | Stop deployment and follow up with AWS Support/the organization administrator. Do not try alternate identities, create providers, or weaken IAM/account controls to bypass the denial. |
 | S3/KMS access denied | Inspect existing bucket policy/default encryption and role resource paths. A customer-managed KMS key requires a separate reviewed key permission change. |
 | Catalog access denied | Check both IAM and Lake Formation if enabled. Do not disable governance or attach administrator permissions. |
 | Landing checksum/row-count failure | Input changed under an immutable ID or upload is incomplete. Regenerate a fresh valid manifest and upload files first, manifest last. |
@@ -22,6 +23,7 @@ must not be used to delete or bypass CDC state, tombstones or a pending publicat
 | Quality gate fails | Read `quarantine/<batch>/quality_report.json` and reason arrays. Fix the source or review the threshold as a business decision; do not discard rejects. |
 | Partially published snapshot | `_publication.json` is FAILED/RUNNING. Do not query mixed versions. Rerun the same batch serially after correcting the failure. Table replacements converge; no cross-table atomicity is claimed. |
 | Tables manually removed but replay says no-op | No-op trusts the publication record. After review, invalidate that record or bump the package version and rebuild. Never mutate curated tables outside the pipeline without a recovery procedure. |
+| `TABLE_LOCATION_MISMATCH` / `EXPLICIT_SCHEMA_MIGRATION_REQUIRED` | The existing target does not match the requested storage root/schema. Preserve it and correct the configuration or review an explicit migration; do not disable the guard. |
 | 15-minute timeout on larger profiles | Do not raise workers/timeout automatically. Inspect stage logs and first prove the small profile within the approved budget. See the measured scope and retained scan limits in docs/performance.md. |
 | Athena scan cutoff | Narrow the query or projection. Raising the cap requires a deliberate cost decision. The small-profile queries should fit; live verification is pending. |
 | Deleted stack fails to recreate databases | Catalog databases use Retain. Import retained resources or do an owner-led cleanup; do not blindly delete data. |
