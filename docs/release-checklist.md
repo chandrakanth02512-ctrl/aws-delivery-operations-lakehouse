@@ -1,9 +1,11 @@
 # Release status and later AWS acceptance
 
-As of 27 October 2026, the repository is **public** and all three phase PRs are merged into `main`
-at `82afc56c27edd19ad87a80aa0e9f212d0747dbcc`. Their branches and merge history are preserved.
-The subsequent [audit fixes](technical-audit.md) require a separate PR review; that PR is not merged
-automatically. No AWS resource or workload has been deployed or executed by this audit.
+As of 27 October 2026, the repository is **public** and **implementation of coding Phases 1–3 is complete**.
+Phase PRs #1–#3 and technical audit PR #4 are all merged into `main` at
+`30692068f08b92113d2775b6781af51b413bde40`.
+The [final `main` CI run](https://github.com/chandrakanth02512-ctrl/aws-delivery-operations-lakehouse/actions/runs/40485752268)
+passed. The project is locally validated; **AWS managed-service acceptance remains pending**.
+No AWS resources or workloads were deployed or executed as part of the audit.
 
 ## Preserved phase review order
 
@@ -13,6 +15,8 @@ automatically. No AWS resource or workload has been deployed or executed by this
    CDC, schema policy, tombstones and saved-plan recovery — merged after Phase 1.
 3. [PR #3](https://github.com/chandrakanth02512-ctrl/aws-delivery-operations-lakehouse/pull/3):
    orchestration, monitoring, verification, analytics and measured optimization — merged after Phase 2.
+4. [PR #4](https://github.com/chandrakanth02512-ctrl/aws-delivery-operations-lakehouse/pull/4):
+   regression fixes, security-tool update and technical audit — merged after Phase 3.
 
 Normal merge commits preserve the stack's ancestry. Future fixes target `main`; no branch deletion,
 history rewrite or forced push is required. All future merges remain owner decisions.
