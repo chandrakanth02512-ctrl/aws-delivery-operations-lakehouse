@@ -5,9 +5,14 @@ S3, AWS Glue 6.0, Apache Iceberg v2, Glue Data Catalog and Athena. It demonstrat
 behind trustworthy delivery metrics: reproducible inputs, auditable ingestion, explicit data quality,
 repeatable publication, tested business formulas and tightly scoped deployment automation.
 
-**All three coding phases are implemented. AWS deployment and managed-service execution have not
-been verified and require owner review and approval.** No AWS credentials, permanent access keys or paid workloads
-were created. This repository contains no real Amazon/customer data and is not affiliated with Amazon.
+**Project status: COMPLETE — all three coding phases and the local technical audit are finished.**
+The complete local suite passed **173 tests** (one live-AWS test intentionally skipped) with **91.92% coverage**;
+[final `main` CI passed](https://github.com/chandrakanth02512-ctrl/aws-delivery-operations-lakehouse/actions/runs/40485752268).
+
+**AWS status: PENDING — cloud deployment and managed-service execution have not been verified.**
+AWS acceptance requires resolving the reported account authorization restriction and separate owner approval.
+No AWS credentials, permanent access keys or paid workloads were created during implementation.
+This repository contains only synthetic data, no real Amazon/customer data, and is not affiliated with Amazon.
 
 ## Business questions
 
