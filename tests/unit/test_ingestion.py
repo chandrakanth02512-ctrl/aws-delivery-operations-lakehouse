@@ -42,6 +42,27 @@ def test_modified_bronze_is_not_silently_repaired(tmp_path):
         ingest(store, batch)
 
 
+@pytest.mark.parametrize("damage", ["batch", "missing_dataset", "row_count", "object_key"])
+def test_snapshot_replay_validates_committed_manifest_identity(tmp_path, damage):
+    batch = write_landing(tmp_path)["batch_id"]
+    store = LocalStore(tmp_path)
+    committed = ingest(store, batch)
+    if damage == "batch":
+        committed["batch_id"] = "b" * 64
+    elif damage == "missing_dataset":
+        del committed["files"]["drivers"]
+    elif damage == "row_count":
+        committed["files"]["drivers"]["rows"] += 1
+    else:
+        source = committed["files"]["drivers"]["key"]
+        alias = "bronze/unrelated/drivers.jsonl"
+        store.write(alias, store.read(source))
+        committed["files"]["drivers"]["key"] = alias
+    store.write(f"bronze/{batch}/manifest.json", json.dumps(committed).encode())
+    with pytest.raises(ValueError, match="Committed Bronze manifest"):
+        ingest(store, batch)
+
+
 def test_partial_failure_can_retry_without_duplicates(tmp_path, monkeypatch):
     batch = write_landing(tmp_path)["batch_id"]
     store = LocalStore(tmp_path)

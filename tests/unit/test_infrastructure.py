@@ -85,3 +85,27 @@ def test_deployment_is_manual_and_gated():
     assert "github.ref == 'refs/heads/main'" in condition
     assert "vars.AWS_DEPLOYMENT_APPROVED == 'true'" in condition
     assert "DEPLOY_REVIEWED_INFRASTRUCTURE" in condition
+
+
+def test_workflows_use_patched_uv_and_unprivileged_pull_request_ci():
+    import re
+
+    import yaml
+    from packaging.version import Version
+
+    for path in (ROOT / ".github/workflows").glob("*.yml"):
+        contents = path.read_text()
+        versions = re.findall(r"pip install uv==([0-9.]+)", contents)
+        assert versions, f"Build tooling must be pinned: {path.name}"
+        assert all(Version(version) >= Version("0.13.4") for version in versions)
+        workflow = yaml.safe_load(contents)
+        for job in workflow["jobs"].values():
+            for step in job["steps"]:
+                if "uses" in step:
+                    assert re.fullmatch(r"[^@]+@[a-f0-9]{40}", step["uses"])
+                if step.get("uses", "").startswith("actions/checkout@"):
+                    assert step["with"]["persist-credentials"] is False
+    ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    assert ci["permissions"] == {"contents": "read"}
+    assert "pull_request_target" not in ci.get("on", ci.get(True))
+    assert "permissions" not in ci["jobs"]["verify"]

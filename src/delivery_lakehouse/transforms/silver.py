@@ -51,7 +51,10 @@ def normalize(frame: DataFrame, name: str) -> DataFrame:
     contract = CONTRACTS[name]
     frame = frame.withColumn("_errors", F.array().cast("array<string>"))
     frame = frame.withColumn(
-        "_parsed", F.from_json("_raw_json", MapType(StringType(), StringType()))
+        "_parsed",
+        F.from_json(
+            "_raw_json", MapType(StringType(), StringType()), {"allowNonNumericNumbers": "false"}
+        ),
     )
     frame = add_error(frame, F.col("_parsed").isNull(), "MALFORMED_JSON_OBJECT")
     # Native Spark JSON shape inspection rejects nested structures in scalar contracts.

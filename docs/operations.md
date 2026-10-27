@@ -72,6 +72,9 @@ Every attempt retains its start/end, duration, exception type/message, category 
 Execution `duration_seconds` describes the latest invocation, while `started_at` retains the first
 invocation's start and the attempt history preserves earlier durations. Manual pauses are not presented
 as processing time. A killed process can leave RUNNING state: it is not evidence of success.
+On explicit resume after the writer has stopped, an unfinished attempt becomes `INTERRUPTED` with
+`PROCESS_INTERRUPTED` diagnostics and `interruption_observed_at`. Its actual completion time and
+duration are unknown and are not invented; the new attempt records its own timing normally.
 
 ## Verification and publication semantics
 
@@ -160,7 +163,8 @@ uv run delivery-lakehouse-ops plan-aws --batch-id REPLACE_WITH_BATCH_ID \
   > /tmp/reviewed-delivery-execution.json
 ```
 
-After separate approval, the owner first deploys the reviewed 0.3.0 job/ZIP release using the existing
+After the account blocker in [deployment](deployment.md) is resolved and separate approval is given,
+the owner first deploys the reviewed 0.3.1 job/ZIP release using the existing
 main-stack procedure. Review `infrastructure/operations.yaml` as a separate named-IAM change set,
 stack name `delivery-ops-operations`, region Sydney, `EnableMonitoring=false`. The existing GitHub/CFN
 deployment roles intentionally cannot create this new role/state machine; the owner must perform
@@ -171,7 +175,7 @@ execute Athena, modify IAM or launch arbitrary jobs.
 The owner/operator needs separately reviewed StartExecution/DescribeExecution/GetExecutionHistory
 permissions, and RedriveExecution/StopExecution only if authorized. Paste the generated `input` into
 the Step Functions console and use its generated `name` only after compute approval and source upload.
-Confirm the job points at the 0.3.0 release; older adapters do not provide Phase 3 verification.
+Confirm the job points at the reviewed 0.3.1 release; pre-0.3 adapters do not provide Phase 3 verification.
 Do not add a schedule. Cloud acceptance and IAM simulation remain unperformed.
 
 For a later approved stop, inspect the Glue JobRun as well as the state machine; `.sync` cancellation

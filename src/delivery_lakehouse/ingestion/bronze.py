@@ -48,7 +48,21 @@ def ingest(store: Store, batch_id: str) -> dict:
     commit_key = f"bronze/{batch_id}/manifest.json"
     if store.exists(commit_key):
         committed = json.loads(store.read(commit_key))
-        for entry in committed["files"].values():
+        if (
+            not isinstance(committed, dict)
+            or committed.get("batch_id") != batch_id
+            or not isinstance(committed.get("files"), dict)
+            or set(committed["files"]) != set(manifest["files"])
+        ):
+            raise ValueError("Committed Bronze manifest identity changed")
+        for name, entry in committed["files"].items():
+            if (
+                not isinstance(entry, dict)
+                or entry.get("key") != f"bronze/{batch_id}/{name}.jsonl"
+                or type(entry.get("rows")) is not int
+                or entry["rows"] != manifest["files"][name]["rows"]
+            ):
+                raise ValueError("Committed Bronze manifest file contract changed")
             if digest(store.read(entry["key"])) != entry["sha256"]:
                 raise ValueError("Committed Bronze output changed; investigate before recovery")
         LOGGER.info("bronze_replay_noop", extra={"batch_id": batch_id})

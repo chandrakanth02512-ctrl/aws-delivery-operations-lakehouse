@@ -1,22 +1,13 @@
 """Iceberg v2 MERGE primitives. Existing schemas require an explicit migration."""
 
 import uuid
-from pathlib import Path
-from urllib.parse import unquote, urlparse
 
 from delivery_lakehouse.config import identifier
-from delivery_lakehouse.tables import write_iceberg
+from delivery_lakehouse.tables import validate_existing_table, write_iceberg
 
 
 def table_identifier(catalog, database, name):
     return ".".join(identifier(part) for part in (catalog, database, name))
-
-
-def normalized_location(location):
-    parsed = urlparse(location)
-    if parsed.scheme in {"", "file"}:
-        return Path(unquote(parsed.path)).resolve().as_uri().rstrip("/")
-    return location.rstrip("/")
 
 
 def ensure_table(spark, schema_frame, catalog, database, name, location):
@@ -24,19 +15,7 @@ def ensure_table(spark, schema_frame, catalog, database, name, location):
     if not spark.catalog.tableExists(table):
         write_iceberg(spark, schema_frame.limit(0), catalog, database, name, location)
     else:
-        properties = {
-            row.key: row.value for row in spark.sql(f"SHOW TBLPROPERTIES {table}").collect()
-        }
-        if properties.get("format-version") != "2":
-            raise ValueError(f"ICEBERG_V2_REQUIRED: {table}")
-        actual = {field.name: field.dataType for field in spark.table(table).schema}
-        expected = {field.name: field.dataType for field in schema_frame.schema}
-        if actual != expected:
-            raise ValueError(f"EXPLICIT_SCHEMA_MIGRATION_REQUIRED: {table}")
-        details = spark.sql(f"DESCRIBE TABLE EXTENDED {table}").collect()
-        actual_location = next(row.data_type for row in details if row.col_name == "Location")
-        if normalized_location(actual_location) != normalized_location(location):
-            raise ValueError(f"TABLE_LOCATION_MISMATCH: {table}")
+        validate_existing_table(spark, schema_frame, table, location)
     return table
 
 

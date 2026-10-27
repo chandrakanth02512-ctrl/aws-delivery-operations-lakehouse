@@ -49,12 +49,13 @@ erDiagram
   development session, streaming engine or schedule. Job packages live under
   `landing/_artifacts/<git-sha>/`, outside batch directories. Reports live under `quarantine/`.
 - **Iceberg compatibility:** create every curated table with `format-version=2`. Reject pre-existing
-  tables reporting any other version. Do not upgrade a v2 table to v3: that is not reversible.
+  tables reporting any other version. Snapshot and CDC writes both reject mismatched existing schemas
+  and storage locations before modifying that table. Do not upgrade a v2 table to v3: that is not reversible.
 - **Publication:** each Iceberg table replacement is atomic. Publication across 15 tables is **not**
   atomic. `gold/_publication.json` moves RUNNING → SUCCEEDED or FAILED and includes the batch/run IDs.
   Analysts must wait for SUCCEEDED and avoid reading during a run. A failed publication can contain
   mixed table versions; rerun the same batch to converge. No concurrent local writers are supported;
-  the one Glue job has a concurrency limit of one. Phase 3 can add coordinated consumer publication.
+  the one Glue job has a concurrency limit of one. Coordinated consumer publication remains future work.
 - **Replay:** source and committed Bronze hashes are checked even on a no-op. The pipeline run hash
   includes source batch, package version, DQ threshold, catalog and database prefix. Bump the package
   version for transformation changes. A successful same-run replay returns the prior publication.
@@ -65,7 +66,7 @@ erDiagram
   avoids collecting business rows on the driver, and aggregates attempts before joining facts.
 - **Partition choice:** tiny curated tables are deliberately unpartitioned, preventing thousands of
   tiny partitions. Parquet compression and a 128 MiB target file size are set. The initial job uses
-  eight shuffle partitions; partitioning/compaction benchmarks belong to Phase 3.
+  eight shuffle partitions; larger-volume partitioning/compaction benchmarks remain future work.
 
 The design follows the current [Glue runtime documentation](https://docs.aws.amazon.com/glue/latest/dg/release-notes.html)
 and [Glue 6.0 migration guidance](https://docs.aws.amazon.com/glue/latest/dg/migrating-version-60.html).

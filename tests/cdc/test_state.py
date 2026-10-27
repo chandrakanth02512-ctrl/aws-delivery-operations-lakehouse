@@ -80,6 +80,22 @@ def test_success_is_terminal_and_pending_cannot_skip_execution():
         transition({"status": "PENDING"}, "SUCCEEDED")
 
 
+def test_empty_cdc_batch_fails_before_initialization_or_publication(tmp_path):
+    from delivery_lakehouse.cdc.generator import write_batch
+    from delivery_lakehouse.cdc.state import INITIALIZED_KEY
+
+    store = LocalStore(tmp_path)
+    previous = {"status": "SUCCEEDED", "batch_id": "previous"}
+    save_json(store, PUBLICATION_KEY, previous)
+    batch = write_batch(store, "empty", "2026-02-06T12:00:00Z", [])
+    with pytest.raises(ValueError, match="INVALID_DATASET_MANIFEST"):
+        run_cdc(None, store, Settings(), batch["batch_id"])
+    assert load_json(store, state_key(batch["batch_id"]))["status"] == "FAILED"
+    assert load_json(store, PUBLICATION_KEY) == previous
+    assert not store.exists(INITIALIZED_KEY)
+    assert not (tmp_path / "bronze").exists()
+
+
 def test_cli_generation_is_local_and_s3_upload_is_explicit(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(
         sys, "argv", ["delivery-lakehouse-cdc", "generate", "--root", str(tmp_path)]

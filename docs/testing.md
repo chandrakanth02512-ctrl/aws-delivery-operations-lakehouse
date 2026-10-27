@@ -1,7 +1,8 @@
 # Local and cloud verification
 
 Required: Python 3.13, Java 17 (Glue's major version; local Java 21 is also supported by Spark 4.1),
-and `uv`. The lockfile pins the full Python dependency graph. Runtime code uses only the Python
+and `uv` 0.13.4 or later. The workflows pin 0.13.4 to address GHSA-hq85-5cpj-mr62.
+The lockfile pins the full Python dependency graph. Runtime code uses only the Python
 standard library plus boto3/PySpark supplied in Glue; Glue receives a deterministic import ZIP.
 
 ```bash
@@ -124,8 +125,9 @@ Infrastructure tests check manual-only orchestration, reuse of the bounded exist
 opt-in monitoring and disabled alarm actions. `cfn-lint` validates all three templates locally;
 no AWS `ValidateTemplate`, IAM simulation, deployment or Step Functions execution is performed.
 
-The [Phase 3 verification report](phase3-verification.md) records the final combined results and
-coverage. [Performance evidence](performance.md) describes the narrow Gold-planning benchmark and
+The [technical audit](technical-audit.md) records current combined results, coverage, targeted
+regressions and security tools. The [Phase 3 verification report](phase3-verification.md) retains its
+historical results. [Performance evidence](performance.md) describes the narrow Gold-planning benchmark and
 its limits. Focused results are supplementary; the combined regression and hosted CI remain the
 release checks. Run Spark tests sequentially in one process; concurrent JVMs can distort timing and
 exhaust a small machine. Only the explicitly opted-in bucket readiness test is live AWS.

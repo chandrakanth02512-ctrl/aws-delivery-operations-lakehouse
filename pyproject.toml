@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "delivery-lakehouse"
-version = "0.3.0"
+version = "0.3.1"
 description = "Synthetic last-mile delivery operations lakehouse on AWS"
 requires-python = ">=3.13,<3.14"
 dependencies = ["boto3==1.42.84"]

@@ -1,25 +1,23 @@
-# Private review, merge order and later AWS acceptance
+# Release status and later AWS acceptance
 
-The coding project is prepared for review. The repository has **not** been made public, no PR was
-merged automatically, and no AWS resource/workload was deployed or executed by this phase.
+As of 27 October 2026, the repository is **public** and all three phase PRs are merged into `main`
+at `82afc56c27edd19ad87a80aa0e9f212d0747dbcc`. Their branches and merge history are preserved.
+The subsequent [audit fixes](technical-audit.md) require a separate PR review; that PR is not merged
+automatically. No AWS resource or workload has been deployed or executed by this audit.
 
-## Review and merge order
+## Preserved phase review order
 
-1. Review **PR #1** (`feat/phase-1-lakehouse` → `main`): source contracts, snapshot layers, KPI
-   definitions, existing-bucket infrastructure and owner-reviewed OIDC/IAM bootstrap.
-2. After Phase 1 is merged, retarget **PR #2** (`feat/phase-2-incremental-cdc`) to `main`. Confirm its
-   diff contains Phase 2 only, rerun required checks if the base changed, then review/merge CDC,
-   schema policy, tombstones and saved-plan recovery.
-3. After Phase 2 is merged, retarget the **Phase 3 PR** (`feat/phase-3-operations`) from
-   `feat/phase-2-incremental-cdc` to `main`. Confirm a Phase-3-only diff and passing checks, then
-   review orchestration, monitoring, verification, analytics and the measured optimization.
+1. [PR #1](https://github.com/chandrakanth02512-ctrl/aws-delivery-operations-lakehouse/pull/1):
+   source contracts, snapshot layers, KPIs, infrastructure and OIDC/IAM definitions — merged.
+2. [PR #2](https://github.com/chandrakanth02512-ctrl/aws-delivery-operations-lakehouse/pull/2):
+   CDC, schema policy, tombstones and saved-plan recovery — merged after Phase 1.
+3. [PR #3](https://github.com/chandrakanth02512-ctrl/aws-delivery-operations-lakehouse/pull/3):
+   orchestration, monitoring, verification, analytics and measured optimization — merged after Phase 2.
 
-Normal merge commits preserve this stack's ancestry. If the owner chooses squash merges, deliberately
-reconcile the next branch with reviewed main before retargeting; do not force-push or blindly accept
-repeated earlier-phase diffs. Do not merge later-phase PRs into an unreviewed predecessor just to
-collapse the stack. All merges remain owner decisions.
+Normal merge commits preserve the stack's ancestry. Future fixes target `main`; no branch deletion,
+history rewrite or forced push is required. All future merges remain owner decisions.
 
-## Before making the repository public
+## Before the next release or AWS deployment
 
 - Review all code and execution/deployment permissions; retain the explicit no-live-AWS-verification
   statement until actual acceptance evidence exists.
@@ -28,14 +26,19 @@ collapse the stack. All merges remain owner decisions.
 - Select a repository license deliberately. No license grant or visibility change is made automatically.
 - Ensure main contains the final README, source, tests, locked dependencies, SQL, diagrams, runbooks
   and verification evidence; confirm a fresh clone can reproduce the small local example.
-- Confirm passing required CI, repository branch protections and main-only OIDC subject restrictions.
-  Review workflow changes as code. A dependency compatibility check is not a vulnerability audit.
+- Confirm passing CI and main-only OIDC subject restrictions. The audit observed `main` as unprotected;
+  the owner should configure required PR review and the `verify` check before enabling deployment.
+  CI success alone does not enforce a merge policy. Repository settings are not changed by this audit.
+- Use patched build tooling and repeat dependency/secret scanning for the actual release commit.
+  A dependency compatibility check alone is not a vulnerability audit.
 - Update the repository description/topics and choose any release tag only after review. Do not describe
   this as production-certified or Amazon-internal data/metrics.
 
-## Tomorrow's separately authorized AWS verification
+## Future separately authorized AWS verification
 
-1. Confirm the Free Plan, remaining credits, Sydney service availability and $10 budget alert. Do not
+1. Resolve the owner-reported SCP denial of `iam:ListOpenIDConnectProviders` through AWS Support/the
+   organization administrator before proceeding. Do not bypass it or create IAM resources as a workaround.
+   Then confirm the Free Plan, remaining credits, Sydney service availability and $10 budget alert. Do not
    upgrade the account to gain access. GitHub access does not establish AWS authentication.
 2. Review the existing [bootstrap permissions](../infrastructure/bootstrap.yaml) and
    [one-time setup](deployment.md). Use temporary credentials/OIDC, not permanent access keys.
